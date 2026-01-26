@@ -1,13 +1,12 @@
 // src/App.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Plus, Search, Eye, EyeOff, Upload, Download, LayoutDashboard, TrendingUp,
-  BarChart3, AlertCircle, FileSpreadsheet, Wand2, AlertTriangle, Calendar as CalendarIcon, 
-  PenTool, Users, Clock, Table as TableIcon, List, Settings, Hammer, Save, FolderOpen
+  Plus, Search, Eye, EyeOff, Save, FolderOpen, AlertTriangle, FileSpreadsheet, 
+  TrendingUp, BarChart, Users, Settings, Hammer, Table as TableIcon, List
 } from 'lucide-react';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-  ResponsiveContainer, LineChart, Line, Cell, LabelList
+  BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, 
+  ResponsiveContainer, LineChart, Line 
 } from 'recharts';
 
 // Imports
@@ -56,25 +55,37 @@ export default function App() {
   useEffect(() => { localStorage.setItem('stu_serviceTypes', JSON.stringify(serviceTypes)); }, [serviceTypes]);
   useEffect(() => { localStorage.setItem('stu_jobs', JSON.stringify(jobs)); }, [jobs]);
 
+  // --- ส่วนที่แก้ไขสูตรคำนวณ (Stats) ---
   const stats = useMemo(() => {
     let totalProfit = 0, totalBalance = 0, totalRevenue = 0;
     const qData = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
     const yData = {};
+    
     jobs.forEach(j => {
       const price = parseFloat(j.totalPrice) || 0;
+      const received = parseFloat(j.receivedAmount) || 0;
       const cost = parseFloat(j.actualOutsourceFee) || 0; 
       const profit = price - cost; 
       
+      // สูตรใหม่: นับเฉพาะยอดที่เป็นบวก (หนี้) เท่านั้น
+      const balance = price - received;
+      if (balance > 0) {
+          totalBalance += balance;
+      }
+      
       totalProfit += profit;
-      totalBalance += (price - (parseFloat(j.receivedAmount)||0));
       totalRevenue += price; 
       
-      if (j.jobYear === '2025') qData[j.quarter] = (qData[j.quarter] || 0) + profit;
+      if (j.jobYear) {
+          const q = j.quarter || 'Q1';
+          if(qData[q] !== undefined) qData[q] = (qData[q] || 0) + profit;
+      }
       const yr = j.jobYear || 'Other';
       yData[yr] = (yData[yr] || 0) + profit;
     });
     return { totalProfit, totalBalance, totalRevenue, qData, yData };
   }, [jobs]);
+  // ------------------------------------
 
   const topDebtors = jobs.map(j => ({ ...j, balance: (parseFloat(j.totalPrice)||0) - (parseFloat(j.receivedAmount)||0) })).filter(j => j.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 5);
   const chartDataQ = Object.keys(stats.qData).map(k => ({ name: k, profit: stats.qData[k] }));
@@ -98,12 +109,8 @@ export default function App() {
       ));
   };
 
-  // --- NEW: Backup & Restore Logic ---
   const handleBackup = () => {
-      const data = {
-          teams, projectTypes, serviceTypes, jobs,
-          backupDate: new Date().toISOString()
-      };
+      const data = { teams, projectTypes, serviceTypes, jobs, backupDate: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -115,11 +122,7 @@ export default function App() {
   const handleRestore = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!window.confirm("คำเตือน: ข้อมูลปัจจุบันจะถูกทับด้วยข้อมูลจากไฟล์ Backup\nยืนยันที่จะกู้คืนข้อมูลหรือไม่?")) {
-          e.target.value = ''; // Reset input
-          return;
-      }
-
+      if (!window.confirm("เตือน: ข้อมูลเก่าจะหายหมด ยืนยันไหม?")) { e.target.value = ''; return; }
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
@@ -128,15 +131,12 @@ export default function App() {
               if(data.projectTypes) setProjectTypes(data.projectTypes);
               if(data.serviceTypes) setServiceTypes(data.serviceTypes);
               if(data.jobs) setJobs(data.jobs);
-              alert('กู้คืนข้อมูลสำเร็จ! (Restore Successful)');
-          } catch (err) {
-              alert('ไฟล์ไม่ถูกต้อง (Invalid Backup File)');
-          }
+              alert('กู้คืนข้อมูลสำเร็จ!');
+          } catch (err) { alert('ไฟล์ผิดพลาด'); }
       };
       reader.readAsText(file);
-      e.target.value = ''; // Reset input
+      e.target.value = '';
   };
-  // -----------------------------------
 
   const exportCSV = () => {
      const headers = ["ID","Client","Service","Type","Total","Profit"];
@@ -156,31 +156,21 @@ export default function App() {
               <div><h1 className="text-xl md:text-2xl font-bold tracking-tight uppercase">@TheToi <span className="text-[#C5A059] font-light">DESIGN STUDIO</span></h1></div>
             </div>
             
-            {/* View Switcher */}
             <div className="flex bg-slate-100 p-1 rounded-lg">
                {['dashboard', 'financial', 'calendar'].map(v => (
                    <button key={v} onClick={() => setCurrentView(v)} className={`px-4 py-2 text-xs font-bold uppercase rounded-md flex items-center gap-2 ${currentView === v ? 'bg-black text-white' : 'text-slate-500'}`}>{v}</button>
                ))}
             </div>
 
-            {/* Actions: Backup/Restore/CSV/Reset */}
             <div className="flex gap-2">
-                <button onClick={handleBackup} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Backup Data (JSON)">
-                    <Save size={16}/>
-                </button>
+                <button onClick={handleBackup} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Backup"><Save size={16}/></button>
                 <div className="relative">
-                    <button onClick={() => document.getElementById('restoreInput').click()} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Restore Data">
-                        <FolderOpen size={16}/>
-                    </button>
+                    <button onClick={() => document.getElementById('restoreInput').click()} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Restore"><FolderOpen size={16}/></button>
                     <input type="file" id="restoreInput" accept=".json" onChange={handleRestore} className="hidden" />
                 </div>
                 <div className="w-px h-8 bg-slate-200 mx-1"></div>
-                <button onClick={exportCSV} className="p-2 border border-slate-200 text-emerald-600 hover:border-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Export CSV">
-                    <FileSpreadsheet size={16}/>
-                </button>
-                <button onClick={() => { if(window.confirm('ล้างข้อมูลทั้งหมด? (Reset All Data)')) { localStorage.clear(); window.location.reload(); } }} className="p-2 border border-slate-200 text-red-400 hover:bg-red-50 hover:text-red-600 rounded transition-colors" title="Factory Reset">
-                    <AlertTriangle size={16}/>
-                </button>
+                <button onClick={exportCSV} className="p-2 border border-slate-200 text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Export CSV"><FileSpreadsheet size={16}/></button>
+                <button onClick={() => { if(window.confirm('ล้างข้อมูลทั้งหมด?')) { localStorage.clear(); window.location.reload(); } }} className="p-2 border border-slate-200 text-red-400 hover:bg-red-50 rounded transition-colors" title="Reset"><AlertTriangle size={16}/></button>
             </div>
         </nav>
 
@@ -195,11 +185,9 @@ export default function App() {
 
                       <div className="flex gap-2">
                           <button onClick={() => setShowInternalCost(!showInternalCost)} className={`px-3 py-2 text-[10px] border rounded-lg flex items-center gap-2 transition-colors ${showInternalCost ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-500'}`}>{showInternalCost ? <EyeOff size={14} /> : <Eye size={14} />} Profit</button>
-                          
                           <button onClick={() => setActiveModal('serviceType')} className="px-3 py-2 border rounded-lg text-xs font-bold uppercase flex items-center gap-2 hover:border-black"><Settings size={14} /> Service</button>
                           <button onClick={() => setActiveModal('projectType')} className="px-3 py-2 border rounded-lg text-xs font-bold uppercase flex items-center gap-2 hover:border-black"><Hammer size={14} /> Project</button>
                           <button onClick={() => setActiveModal('team')} className="px-3 py-2 border rounded-lg text-xs font-bold uppercase flex items-center gap-2 hover:border-black"><Users size={14} /> Team</button>
-                          
                           <button onClick={() => { setEditingJob(null); setActiveModal('job'); }} className="px-6 py-2 bg-black text-white rounded-lg text-xs font-bold uppercase flex items-center gap-2"><Plus size={14} /> New</button>
                       </div>
                   </div>
@@ -207,7 +195,7 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                    <StatCard title="Net Profit" value={stats.totalProfit} subtext="กำไรสุทธิ" color="black" borderColor="border-l-black" icon={TrendingUp} />
                    <StatCard title="Revenue" value={stats.totalRevenue} subtext="ยอดขายรวม" color="#C5A059" borderColor="border-l-[#C5A059]" icon={BarChart} />
-                   <StatCard title="Balance" value={stats.totalBalance} subtext="ค้างรับ" color="#DC2626" borderColor="border-l-[#DC2626]" icon={FileSpreadsheet} />
+                   <StatCard title="Balance" value={stats.totalBalance} subtext="ค้างรับ (เฉพาะยอดหนี้)" color="#DC2626" borderColor="border-l-[#DC2626]" icon={FileSpreadsheet} />
                   </div>
 
                   <div className="p-4 border-b flex justify-between bg-white rounded-t-xl border border-slate-200">
@@ -237,7 +225,7 @@ export default function App() {
             {currentView === 'financial' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                     <div className="bg-white p-6 rounded-xl border h-[300px]"><h4 className="text-xs font-bold mb-4">Quarterly Profit</h4><ResponsiveContainer><LineChart data={chartDataQ}><XAxis dataKey="name" /><YAxis /><RechartsTooltip /><Line type="monotone" dataKey="profit" stroke="#C5A059" strokeWidth={3} /></LineChart></ResponsiveContainer></div>
-                    <div className="bg-white p-6 rounded-xl border h-[300px]"><h4 className="text-xs font-bold mb-4">Yearly</h4><ResponsiveContainer><BarChart data={chartDataY}><XAxis dataKey="name" /><YAxis /><Bar dataKey="profit" fill="#1A1A1A" /></BarChart></ResponsiveContainer></div>
+                    <div className="bg-white p-6 rounded-xl border h-[300px]"><h4 className="text-xs font-bold mb-4">Yearly</h4><ResponsiveContainer><ReBarChart data={chartDataY}><XAxis dataKey="name" /><YAxis /><Bar dataKey="profit" fill="#1A1A1A" /></ReBarChart></ResponsiveContainer></div>
                     <div className="bg-white p-6 rounded-xl border col-span-1 md:col-span-2"><h4 className="text-xs font-bold mb-4 text-red-500">Top Debtors</h4>{topDebtors.map(j => <div key={j.id} className="flex justify-between p-3 border-b"><span>{j.client}</span><span className="font-bold text-red-500">{formatCurrency(j.balance)}</span></div>)}</div>
                 </div>
             )}

@@ -1,3 +1,4 @@
+// src/components/JobModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, Save, CheckCircle2, Clock } from 'lucide-react';
 
@@ -31,12 +32,14 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, onClo
     const { name, value } = e.target;
     let newData = { ...formData, [name]: value };
     
-    // คำนวณราคาอัตโนมัติ (พื้นที่ x ราคาต่อหน่วย)
+    // คำนวณราคาอัตโนมัติเฉพาะเมื่อแก้พื้นที่ หรือ ราคาต่อหน่วย
     if (name === 'area' || name === 'unitPrice') {
        const area = parseFloat(name === 'area' ? value : formData.area) || 0;
        const price = parseFloat(name === 'unitPrice' ? value : formData.unitPrice) || 0;
        newData.totalPrice = area * price;
     }
+    // ถ้าแก้ Total Price เอง ก็จะใช้ค่าที่พิมพ์เข้าไปเลย (ไม่ต้องคำนวณทับ)
+    
     setFormData(newData);
   };
 
@@ -64,7 +67,7 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, onClo
         
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           
-          {/* ส่วนเลือกสถานะ (Status) - สำคัญมาก! */}
+          {/* ส่วนเลือกสถานะ (Status) */}
           <div className="p-1 bg-slate-100 rounded-xl flex gap-1">
              <button 
                type="button"
@@ -135,10 +138,16 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, onClo
                 <input type="number" name="unitPrice" value={formData.unitPrice} onChange={handleChange} className="w-full p-2 border rounded-lg text-right" placeholder="0" />
             </div>
             <div>
-                <label className="block text-xs font-bold uppercase text-emerald-600 mb-1">ราคารวม</label>
-                <div className="w-full p-2 bg-emerald-50 border border-emerald-100 rounded-lg text-right font-bold text-emerald-700">
-                    {parseFloat(formData.totalPrice).toLocaleString()}
-                </div>
+                <label className="block text-xs font-bold uppercase text-emerald-600 mb-1">ราคารวม (Total)</label>
+                {/* เปลี่ยนเป็น Input เพื่อให้แก้ไขได้ */}
+                <input 
+                    type="number"
+                    name="totalPrice"
+                    value={formData.totalPrice}
+                    onChange={handleChange}
+                    className="w-full p-2 bg-emerald-50 border border-emerald-100 rounded-lg text-right font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="0"
+                />
             </div>
           </div>
           

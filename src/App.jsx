@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Search, Eye, EyeOff, Upload, Download, LayoutDashboard, TrendingUp,
   BarChart3, AlertCircle, FileSpreadsheet, Wand2, AlertTriangle, Calendar as CalendarIcon, 
-  PenTool, Users, Clock, Table as TableIcon, List, Settings, Hammer 
+  PenTool, Users, Clock, Table as TableIcon, List, Settings, Hammer, Save, FolderOpen
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -90,17 +90,53 @@ export default function App() {
   const handleAddTeam = (t) => setTeams([...teams, { ...t, id: `T${Date.now()}` }]);
   const handleDeleteTeam = (id) => { if (window.confirm("ลบทีม?")) setTeams(teams.filter(t => t.id !== id)); };
   
-  // --- ฟังก์ชันย้ายงาน (Drag & Drop) ---
   const handleMoveJob = (jobId, newDate) => {
-      // อัปเดตวันที่ส่งงานใหม่ (Update job date)
       const d = new Date(newDate);
       const newQuarter = (d.getMonth() + 1) <= 3 ? 'Q1' : (d.getMonth() + 1) <= 6 ? 'Q2' : (d.getMonth() + 1) <= 9 ? 'Q3' : 'Q4';
-      
       setJobs(prevJobs => prevJobs.map(j => 
           j.id === jobId ? { ...j, deliveryDate: newDate, jobYear: d.getFullYear().toString(), quarter: newQuarter } : j
       ));
   };
-  // ---------------------------------
+
+  // --- NEW: Backup & Restore Logic ---
+  const handleBackup = () => {
+      const data = {
+          teams, projectTypes, serviceTypes, jobs,
+          backupDate: new Date().toISOString()
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `thetoi-backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+  };
+
+  const handleRestore = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!window.confirm("คำเตือน: ข้อมูลปัจจุบันจะถูกทับด้วยข้อมูลจากไฟล์ Backup\nยืนยันที่จะกู้คืนข้อมูลหรือไม่?")) {
+          e.target.value = ''; // Reset input
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const data = JSON.parse(event.target.result);
+              if(data.teams) setTeams(data.teams);
+              if(data.projectTypes) setProjectTypes(data.projectTypes);
+              if(data.serviceTypes) setServiceTypes(data.serviceTypes);
+              if(data.jobs) setJobs(data.jobs);
+              alert('กู้คืนข้อมูลสำเร็จ! (Restore Successful)');
+          } catch (err) {
+              alert('ไฟล์ไม่ถูกต้อง (Invalid Backup File)');
+          }
+      };
+      reader.readAsText(file);
+      e.target.value = ''; // Reset input
+  };
+  // -----------------------------------
 
   const exportCSV = () => {
      const headers = ["ID","Client","Service","Type","Total","Profit"];
@@ -119,14 +155,32 @@ export default function App() {
               <div className="w-12 h-12 flex items-center justify-center bg-black rounded-md"><span className="text-white font-bold text-xl">S</span></div>
               <div><h1 className="text-xl md:text-2xl font-bold tracking-tight uppercase">@TheToi <span className="text-[#C5A059] font-light">DESIGN STUDIO</span></h1></div>
             </div>
+            
+            {/* View Switcher */}
             <div className="flex bg-slate-100 p-1 rounded-lg">
                {['dashboard', 'financial', 'calendar'].map(v => (
                    <button key={v} onClick={() => setCurrentView(v)} className={`px-4 py-2 text-xs font-bold uppercase rounded-md flex items-center gap-2 ${currentView === v ? 'bg-black text-white' : 'text-slate-500'}`}>{v}</button>
                ))}
             </div>
+
+            {/* Actions: Backup/Restore/CSV/Reset */}
             <div className="flex gap-2">
-                <button onClick={exportCSV} className="p-2 border rounded"><Download size={16}/></button>
-                <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="p-2 border text-red-300 rounded"><AlertTriangle size={16}/></button>
+                <button onClick={handleBackup} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Backup Data (JSON)">
+                    <Save size={16}/>
+                </button>
+                <div className="relative">
+                    <button onClick={() => document.getElementById('restoreInput').click()} className="p-2 border border-slate-200 text-slate-600 hover:border-black hover:text-black rounded transition-colors" title="Restore Data">
+                        <FolderOpen size={16}/>
+                    </button>
+                    <input type="file" id="restoreInput" accept=".json" onChange={handleRestore} className="hidden" />
+                </div>
+                <div className="w-px h-8 bg-slate-200 mx-1"></div>
+                <button onClick={exportCSV} className="p-2 border border-slate-200 text-emerald-600 hover:border-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Export CSV">
+                    <FileSpreadsheet size={16}/>
+                </button>
+                <button onClick={() => { if(window.confirm('ล้างข้อมูลทั้งหมด? (Reset All Data)')) { localStorage.clear(); window.location.reload(); } }} className="p-2 border border-slate-200 text-red-400 hover:bg-red-50 hover:text-red-600 rounded transition-colors" title="Factory Reset">
+                    <AlertTriangle size={16}/>
+                </button>
             </div>
         </nav>
 
@@ -188,7 +242,6 @@ export default function App() {
                 </div>
             )}
 
-            {/* เพิ่ม onMoveJob เข้าไปใน CalendarView */}
             {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={(job) => { setEditingJob(job); setActiveModal('job'); }} onMoveJob={handleMoveJob} />}
         </div>
       </div>

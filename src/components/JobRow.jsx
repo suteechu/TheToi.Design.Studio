@@ -1,82 +1,97 @@
 // src/components/JobRow.jsx
 import React from 'react';
-import { formatCurrency } from '../utils';
-import { Image as ImageIcon, Settings, Trash2, Clock, Bed, Bath, Car, HardHat } from 'lucide-react';
+import { Clock, MoreHorizontal, FileText, AlertTriangle, PlayCircle } from 'lucide-react';
+
+const formatCurrency = (num) => '฿' + (parseFloat(num)||0).toLocaleString();
 
 export default function JobRow({ job, team, showInternal, onEdit, onDelete, onDoc }) {
-   const balance = parseFloat(job.totalPrice || 0) - parseFloat(job.receivedAmount || 0);
-   const percentPaid = job.totalPrice > 0 ? (job.receivedAmount / job.totalPrice) * 100 : 0;
-   
-   const cost = parseFloat(job.actualOutsourceFee) || 0;
-   const profit = (parseFloat(job.totalPrice) || 0) - cost;
+  const isFinished = job.status === 'FINISHED';
+  
+  // คำนวณวัน
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const delivery = new Date(job.deliveryDate);
+  delivery.setHours(0,0,0,0);
+  
+  const diffTime = delivery - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  // ตรรกะแจ้งเตือน (Highlight)
+  let statusBadge;
+  if (isFinished) {
+      statusBadge = <span className="px-2 py-1 rounded text-[10px] font-bold bg-emerald-100 text-emerald-600 border border-emerald-200">เสร็จสิ้น</span>;
+  } else if (diffDays < 0) {
+      // --- ส่วนที่เช็คว่าเกิน 14 วันหรือไม่ ---
+      const overdueDays = Math.abs(diffDays);
+      if (overdueDays > 14) {
+          // เกิน 14 วัน -> สีแดงเข้ม + กระพริบ
+          statusBadge = (
+            <span className="px-2 py-1 rounded text-[10px] font-bold bg-red-600 text-white border border-red-700 flex items-center w-fit gap-1 animate-pulse shadow-sm">
+               <AlertTriangle size={10} className="fill-white" /> เกิน {overdueDays} วัน!!
+            </span>
+          );
+      } else {
+          // เกินทั่วไป -> สีแดงอ่อน
+          statusBadge = <span className="px-2 py-1 rounded text-[10px] font-bold bg-red-50 text-red-500 border border-red-100">เกิน {overdueDays} วัน</span>;
+      }
+  } else {
+      statusBadge = <span className="px-2 py-1 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">เหลือ {diffDays} วัน</span>;
+  }
 
-   let badgeClass = "bg-red-50 text-red-500 border-red-100";
-   let statusText = "ค้างจ่าย";
+  const received = parseFloat(job.receivedAmount) || 0;
+  const total = parseFloat(job.totalPrice) || 0;
+  const balance = total - received;
+  const netProfit = total - (parseFloat(job.actualOutsourceFee) || 0);
 
-   if (balance <= 0 && job.totalPrice > 0) {
-      badgeClass = "bg-green-50 text-green-600 border-green-200";
-      statusText = "เสร็จสิ้น";
-   } else if (percentPaid >= 50) {
-      badgeClass = "bg-yellow-50 text-yellow-600 border-yellow-200";
-      statusText = "มัดจำ 50%";
-   } else if (percentPaid > 0) {
-      badgeClass = "bg-orange-50 text-orange-600 border-orange-200";
-      statusText = "บางส่วน";
-   }
-
-   const daysLeft = Math.ceil((new Date(job.deliveryDate) - new Date()) / (1000 * 60 * 60 * 24));
-   let deadlineClass = "text-slate-400";
-   if(daysLeft <= 3 && balance > 0) deadlineClass = "text-red-500 font-bold animate-pulse";
-   else if(daysLeft <= 7 && balance > 0) deadlineClass = "text-orange-500 font-bold";
-
-   return (
-      <tr className="hover:bg-slate-50 transition-all border-b border-slate-50 group">
-         <td className="px-6 py-4 cursor-pointer" onClick={onDoc}>
-            <div className="flex items-center gap-4">
-               {job.image ? (
-                 <img src={job.image} alt="Project" className="w-12 h-12 object-cover rounded-md border border-slate-200 shadow-sm" />
-               ) : (
-                 <div className="w-12 h-12 bg-slate-100 rounded-md flex items-center justify-center text-slate-300">
-                    <ImageIcon size={20} />
-                 </div>
-               )}
-               <div>
-                  <div className="font-bold text-slate-900 uppercase text-xs tracking-tight">{job.client}</div>
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-                     {job.serviceType} <span className="text-slate-300 mx-1">|</span> {job.projectType}
-                  </div>
-                  
-                  {/* --- แสดงข้อมูลห้อง --- */}
-                  <div className="text-[9px] text-slate-400 mt-1 flex items-center gap-3">
-                      {(job.bedrooms > 0) && <span className="flex items-center gap-1"><Bed size={10}/> {job.bedrooms}</span>}
-                      {(job.bathrooms > 0) && <span className="flex items-center gap-1"><Bath size={10}/> {job.bathrooms}</span>}
-                      {(job.parking > 0) && <span className="flex items-center gap-1"><Car size={10}/> {job.parking}</span>}
-                  </div>
-
-                  <div className={`text-[9px] mt-1 flex items-center gap-1 ${deadlineClass}`}>
-                     <Clock size={10} /> ส่งงาน: {new Date(job.deliveryDate).toLocaleDateString('th-TH')} ({daysLeft} วัน)
-                  </div>
-               </div>
+  return (
+    <tr className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+      <td className="px-6 py-4">
+        <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold ${isFinished ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                {job.client.charAt(0)}
             </div>
-         </td>
-         <td className="px-6 py-4"><span className={`px-2 py-1 text-[9px] font-bold uppercase border rounded-md whitespace-nowrap ${badgeClass}`}>{statusText}</span></td>
-         <td className="px-6 py-4 text-right font-medium text-xs tracking-tighter text-slate-900">{formatCurrency(job.totalPrice)}</td>
-         
-         {showInternal && (
-             <td className="px-6 py-4 text-right">
-                 <div className="text-emerald-500 font-bold text-xs">{formatCurrency(profit)}</div>
-                 <div className="text-[8px] text-slate-400 uppercase">กำไรสุทธิ</div>
-             </td>
-         )}
-         
-         <td className={`px-6 py-4 text-right font-bold text-sm ${balance > 0 ? 'text-red-600' : 'text-slate-300'}`}>{formatCurrency(balance)}</td>
-         <td className="px-6 py-4 text-center">
-            <div className="flex justify-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-               <button onClick={(e) => { e.stopPropagation(); onDoc(); }} className="bg-black text-white px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest hover:bg-[#C5A059] rounded transition-colors shadow-sm">เอกสาร</button>
-               <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-100 rounded transition-colors"><Settings size={14} /></button>
-               <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+            <div>
+                <div className="font-bold text-sm text-slate-800">{job.client}</div>
+                <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                    <span className="bg-slate-100 px-1.5 py-0.5 rounded">{job.projectType}</span>
+                    {/* แสดงวันเริ่มงาน (ถ้ามี) */}
+                    {job.startDate && (
+                        <span className="flex items-center gap-1 text-slate-400"><PlayCircle size={8}/> เริ่ม {new Date(job.startDate).toLocaleDateString('th-TH', {day:'numeric',month:'numeric'})}</span>
+                    )}
+                </div>
             </div>
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex flex-col gap-1">
+            {statusBadge}
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                <Clock size={10}/> ส่ง: {new Date(job.deliveryDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
+            </span>
+        </div>
+      </td>
+      <td className="px-6 py-4 text-right">
+        <div className="font-bold text-sm">{formatCurrency(total)}</div>
+        <div className="text-[10px] text-slate-400">{job.area} ตร.ม.</div>
+      </td>
+      
+      {showInternal && (
+         <td className="px-6 py-4 text-right">
+            <div className="font-bold text-sm text-emerald-600">{formatCurrency(netProfit)}</div>
+            <div className="text-[10px] text-slate-400">{(netProfit/total*100).toFixed(1)}%</div>
          </td>
-      </tr>
-   );
+      )}
+
+      <td className="px-6 py-4 text-right">
+        <div className={`font-bold text-sm ${balance > 0 ? 'text-red-500' : 'text-slate-300'}`}>{formatCurrency(balance)}</div>
+        {balance > 0 && <div className="text-[10px] text-red-300">ค้างรับ</div>}
+      </td>
+      <td className="px-6 py-4 text-center">
+         <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={onDoc} className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-md transition-colors" title="เอกสาร"><FileText size={16}/></button>
+            <button onClick={onEdit} className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-black rounded-md transition-colors" title="แก้ไข"><MoreHorizontal size={16}/></button>
+         </div>
+      </td>
+    </tr>
+  );
 }

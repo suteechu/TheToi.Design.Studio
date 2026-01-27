@@ -1,85 +1,105 @@
-// src/components/ConfigModals.jsx
-import React from 'react';
-import { Trash2, FileSpreadsheet, Printer } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Plus, Trash2, GripVertical, FileText, Printer, ChevronRight } from 'lucide-react';
 
-export const TeamModal = ({ teams, onClose, onAdd, onDelete }) => (
-   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md shadow-2xl p-8 border-t-8 border-[#C5A059] rounded-xl">
-         <h2 className="text-xl font-bold uppercase mb-8">จัดการ <span className="text-[#C5A059]">ทีมช่าง</span></h2>
-         <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.target); onAdd({ name: fd.get('teamName'), ratePerSqm: parseFloat(fd.get('rate')) }); e.target.reset(); }} className="space-y-4 mb-8 bg-slate-50 p-6 rounded-lg">
-            <input name="teamName" required placeholder="ชื่อทีมช่าง..." className="w-full px-4 py-3 bg-white border border-slate-100 rounded focus:outline-none focus:border-[#C5A059] text-sm font-bold uppercase" />
-            <div className="relative">
-               <input name="rate" type="number" required defaultValue="80" placeholder="เรทค่าแรง..." className="w-full px-4 py-3 bg-white border border-slate-100 rounded focus:outline-none focus:border-[#C5A059] text-sm pl-10" />
-               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs">฿</span>
-            </div>
-            <button type="submit" className="w-full py-3 bg-[#C5A059] text-white text-xs font-bold uppercase hover:bg-[#1A1A1A] transition-all rounded">เพิ่มทีม</button>
-         </form>
-         <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-            {teams.map(t => (
-               <div key={t.id} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded hover:border-[#C5A059] transition-colors">
-                  <div><p className="text-xs font-bold text-slate-900">{t.name}</p><p className="text-[9px] text-[#C5A059] font-bold">RATE: ฿{t.ratePerSqm}/SQM</p></div>
-                  <button onClick={() => onDelete(t.id)} className="text-slate-200 hover:text-red-500"><Trash2 size={16} /></button>
+const useDragDrop = (list, onReorder) => {
+  const dragItem = useRef(); const dragOverItem = useRef();
+  const start = (e, pos) => { dragItem.current = pos; };
+  const enter = (e, pos) => { dragOverItem.current = pos; };
+  const end = () => {
+    const copy = [...list]; const item = copy.splice(dragItem.current, 1)[0];
+    copy.splice(dragOverItem.current, 0, item);
+    dragItem.current = null; dragOverItem.current = null;
+    onReorder(copy);
+  };
+  return { start, enter, end };
+};
+
+export function TeamModal({ teams, onClose, onAdd, onDelete, onReorder }) {
+  const [name, setName] = useState(''); const [rate, setRate] = useState(80);
+  const { start, enter, end } = useDragDrop(teams, onReorder);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl animate-in zoom-in duration-200">
+        <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+           <h3 className="font-bold text-sm uppercase tracking-widest text-slate-500">Manage Teams</h3>
+           <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full transition-colors"><X size={18} className="text-slate-400 hover:text-black"/></button>
+        </div>
+        <div className="flex gap-2 mb-6">
+           <input placeholder="ชื่อทีม..." className="flex-1 p-3 bg-gray-50 border border-transparent focus:bg-white focus:border-slate-200 rounded-xl text-sm font-bold outline-none transition-all" value={name} onChange={e => setName(e.target.value)} />
+           <input type="number" className="w-20 p-3 bg-gray-50 border border-transparent focus:bg-white focus:border-slate-200 rounded-xl text-sm text-center outline-none" value={rate} onChange={e => setRate(e.target.value)} />
+           <button onClick={() => { if(name) { onAdd({name, ratePerSqm: rate}); setName(''); }}} className="bg-black text-white p-3 rounded-xl hover:bg-slate-800 transition-all shadow-md"><Plus size={20}/></button>
+        </div>
+        <div className="space-y-2 overflow-y-auto max-h-[400px] pr-1">
+           {teams.map((t, i) => (
+             <div key={t.id} draggable onDragStart={(e)=>start(e,i)} onDragEnter={(e)=>enter(e,i)} onDragEnd={end} onDragOver={e=>e.preventDefault()} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl cursor-move group hover:border-[#C5A059] hover:shadow-sm transition-all">
+                <div className="flex items-center gap-3">
+                   <GripVertical size={16} className="text-slate-300 group-hover:text-[#C5A059] transition-colors"/>
+                   <div><span className="text-xs font-bold text-slate-800 uppercase block">{t.name}</span><span className="text-[10px] text-slate-400">Rate: ฿{t.ratePerSqm}</span></div>
+                </div>
+                <button onClick={() => onDelete(t.id)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+             </div>
+           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DocSelectModal({ onClose, onSelect }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[65] flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-3xl text-center max-w-lg w-full shadow-2xl animate-in zoom-in duration-200">
+        <h3 className="text-xs font-bold uppercase mb-8 tracking-[0.3em] text-slate-400">Select Document Type</h3>
+        <div className="flex gap-4 justify-center">
+          <button onClick={() => onSelect('QUOTATION')} className="flex-1 p-6 border border-slate-200 hover:border-black rounded-2xl transition-all group hover:shadow-xl bg-white flex flex-col items-center gap-3">
+             <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 group-hover:bg-black group-hover:text-white transition-colors"><FileText size={20}/></div>
+             <span className="font-bold text-slate-800 uppercase text-xs tracking-widest">Quotation</span>
+          </button>
+          <button onClick={() => onSelect('RECEIPT')} className="flex-1 p-6 border border-[#C5A059]/20 bg-[#C5A059]/5 hover:bg-[#C5A059] rounded-2xl transition-all group hover:shadow-xl flex flex-col items-center gap-3">
+             <div className="w-12 h-12 bg-[#C5A059]/20 rounded-full flex items-center justify-center text-[#C5A059] group-hover:bg-white group-hover:text-[#C5A059] transition-colors"><Printer size={20}/></div>
+             <span className="font-bold text-[#C5A059] group-hover:text-white uppercase text-xs tracking-widest">Receipt</span>
+          </button>
+        </div>
+        <button onClick={onClose} className="mt-8 text-[10px] text-slate-400 font-bold uppercase tracking-widest hover:text-black transition-colors underline decoration-slate-300 underline-offset-4">Cancel Selection</button>
+      </div>
+    </div>
+  );
+}
+
+// ... ProjectTypeModal & ServiceTypeModal ใช้สไตล์เดียวกับ TeamModal ครับ
+export function ProjectTypeModal({ list, onClose, onReorder }) {
+    const { start, enter, end } = useDragDrop(list, onReorder);
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl">
+          <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4"><h3 className="font-bold text-sm uppercase tracking-widest text-slate-500">Project Types</h3><button onClick={onClose}><X size={18} className="text-slate-400 hover:text-black"/></button></div>
+          <div className="space-y-2 overflow-y-auto max-h-[400px] pr-1">
+             {list.map((t, i) => (
+               <div key={i} draggable onDragStart={(e)=>start(e,i)} onDragEnter={(e)=>enter(e,i)} onDragEnd={end} onDragOver={e=>e.preventDefault()} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl cursor-move group hover:border-[#C5A059] hover:shadow-sm transition-all">
+                  <div className="flex items-center gap-3"><GripVertical size={16} className="text-slate-300 group-hover:text-[#C5A059]"/><span className="text-xs font-bold text-slate-700 uppercase">{t}</span></div><ChevronRight size={14} className="text-slate-300"/>
                </div>
-            ))}
-         </div>
-         <button onClick={onClose} className="w-full mt-6 text-[10px] font-bold text-slate-400 uppercase hover:text-black">ปิด</button>
+             ))}
+          </div>
+        </div>
       </div>
-   </div>
-);
+    );
+}
 
-// Modal สำหรับจัดการ "ประเภทงาน" (Project Type)
-export const ProjectTypeModal = ({ list, onClose, onAdd, onDelete }) => (
-   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md shadow-2xl p-8 border-t-8 border-[#C5A059] rounded-xl">
-         <h2 className="text-xl font-bold uppercase mb-8">จัดการ <span className="text-[#C5A059]">ประเภทงาน (Project)</span></h2>
-         <form onSubmit={(e) => { e.preventDefault(); const val = new FormData(e.target).get('name'); if(val) onAdd(val); e.target.reset(); }} className="space-y-4 mb-8 bg-slate-50 p-6 rounded-lg">
-            <input name="name" required placeholder="เช่น บ้านสองชั้น..." className="w-full px-4 py-3 bg-white border border-slate-100 rounded focus:outline-none focus:border-[#C5A059] text-sm font-bold uppercase" />
-            <button type="submit" className="w-full py-3 bg-[#C5A059] text-white text-xs font-bold uppercase hover:bg-[#1A1A1A] transition-all rounded">เพิ่มรายการ</button>
-         </form>
-         <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-            {list.map((t, i) => (
-               <div key={i} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded hover:border-[#C5A059] transition-colors">
-                  <p className="text-xs font-bold text-slate-900 uppercase">{t}</p>
-                  <button onClick={() => onDelete(i)} className="text-slate-200 hover:text-red-500"><Trash2 size={16} /></button>
+export function ServiceTypeModal({ list, onClose, onReorder }) {
+    const { start, enter, end } = useDragDrop(list, onReorder);
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-2xl">
+          <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4"><h3 className="font-bold text-sm uppercase tracking-widest text-slate-500">Service Types</h3><button onClick={onClose}><X size={18} className="text-slate-400 hover:text-black"/></button></div>
+          <div className="space-y-2 overflow-y-auto max-h-[400px] pr-1">
+             {list.map((t, i) => (
+               <div key={i} draggable onDragStart={(e)=>start(e,i)} onDragEnter={(e)=>enter(e,i)} onDragEnd={end} onDragOver={e=>e.preventDefault()} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl cursor-move group hover:border-[#C5A059] hover:shadow-sm transition-all">
+                  <div className="flex items-center gap-3"><GripVertical size={16} className="text-slate-300 group-hover:text-[#C5A059]"/><span className="text-xs font-bold text-slate-700 uppercase">{t}</span></div><ChevronRight size={14} className="text-slate-300"/>
                </div>
-            ))}
-         </div>
-         <button onClick={onClose} className="w-full mt-6 text-[10px] font-bold text-slate-400 uppercase hover:text-black">ปิด</button>
+             ))}
+          </div>
+        </div>
       </div>
-   </div>
-);
-
-// Modal สำหรับจัดการ "ชนิดงาน" (Service Type)
-export const ServiceTypeModal = ({ list, onClose, onAdd, onDelete }) => (
-   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md shadow-2xl p-8 border-t-8 border-black rounded-xl">
-         <h2 className="text-xl font-bold uppercase mb-8">จัดการ <span className="text-black">ชนิดงาน (Service)</span></h2>
-         <form onSubmit={(e) => { e.preventDefault(); const val = new FormData(e.target).get('name'); if(val) onAdd(val); e.target.reset(); }} className="space-y-4 mb-8 bg-slate-50 p-6 rounded-lg">
-            <input name="name" required placeholder="เช่น แบบก่อสร้าง+3D..." className="w-full px-4 py-3 bg-white border border-slate-100 rounded focus:outline-none focus:border-black text-sm font-bold uppercase" />
-            <button type="submit" className="w-full py-3 bg-black text-white text-xs font-bold uppercase hover:bg-[#C5A059] transition-all rounded">เพิ่มรายการ</button>
-         </form>
-         <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-            {list.map((t, i) => (
-               <div key={i} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded hover:border-black transition-colors">
-                  <p className="text-xs font-bold text-slate-900 uppercase">{t}</p>
-                  <button onClick={() => onDelete(i)} className="text-slate-200 hover:text-red-500"><Trash2 size={16} /></button>
-               </div>
-            ))}
-         </div>
-         <button onClick={onClose} className="w-full mt-6 text-[10px] font-bold text-slate-400 uppercase hover:text-black">ปิด</button>
-      </div>
-   </div>
-);
-
-export const DocSelectModal = ({ onClose, onSelect }) => (
-   <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[65] flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md p-10 text-center border-t-8 border-black rounded-xl">
-         <h3 className="text-lg font-bold uppercase mb-8">เลือกประเภทเอกสาร</h3>
-         <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => onSelect('QUOTATION')} className="py-6 border border-slate-200 hover:border-black hover:bg-slate-50 transition-all font-bold uppercase text-xs tracking-widest w-full rounded-lg flex flex-col items-center gap-2"><FileSpreadsheet size={24} /><span>ใบเสนอราคา<br/>(Quotation)</span></button>
-            <button onClick={() => onSelect('RECEIPT')} className="py-6 bg-[#C5A059] text-white hover:bg-[#1A1A1A] transition-all font-bold uppercase text-xs tracking-widest w-full rounded-lg flex flex-col items-center gap-2 shadow-lg"><Printer size={24} /><span>ใบเสร็จรับเงิน<br/>(Receipt)</span></button>
-         </div>
-         <button onClick={onClose} className="mt-8 text-[10px] text-slate-400 font-bold uppercase">ยกเลิก</button>
-      </div>
-   </div>
-);
+    );
+}

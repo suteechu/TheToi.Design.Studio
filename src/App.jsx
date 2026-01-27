@@ -110,7 +110,15 @@ const JobRow = ({ job, team, onEdit, onDelete, onDoc }) => {
   const isPaid = balance <= 0;
   const netProfit = parseFloat(job.totalPrice) - (parseFloat(job.actualOutsourceFee) || 0);
   const marginPercent = job.totalPrice > 0 ? (netProfit / job.totalPrice) * 100 : 0;
-  const formatDate = (d) => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  
+  // Safe date formatting
+  const formatDate = (d) => {
+      try {
+          return new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+      } catch (e) {
+          return '-';
+      }
+  };
 
   return (
     <tr className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 text-xs">

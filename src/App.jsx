@@ -11,10 +11,21 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, AreaChart, Area
 } from 'recharts';
 
-// --- 1. DATA & UTILS ---
+// --- 1. HELPER: Safe LocalStorage Loader ---
+const safeJSONParse = (key, fallback) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
+  } catch (error) {
+    console.error(`Error loading ${key}:`, error);
+    return fallback;
+  }
+};
+
 const formatCurrency = (amount) => 
   `฿${(parseFloat(amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+// --- 2. DATA ---
 const DEFAULT_TEAMS = [
   { id: 'T1', name: 'ช่างนิติพันธ์ เปือยยะ (อุดรธานี)', ratePerSqm: 80 },
   { id: 'T2', name: 'ช่างมนตรี อุ่นแก้ว (ปทุมธานี)', ratePerSqm: 70 },
@@ -41,85 +52,38 @@ const INITIAL_JOBS = [
       projectType: 'บ้านพักอาศัยชั้นเดียว', serviceType: 'แบบก่อสร้าง', 
       area: 120, unitPrice: 150, totalPrice: 18000, receivedAmount: 18000, 
       feeEng: 0, feeArch: 0, feeSuper: 0, actualOutsourceFee: 2000, 
-      startDate: '2025-12-09', deliveryDate: '2025-12-17', // วันที่ตามที่ระบุ
+      startDate: '2025-12-09', deliveryDate: '2025-12-17', 
       bedrooms: 2, bathrooms: 1, parking: 1,
       note: 'งานเร่งด่วน'
   }
 ];
 
-// --- 2. GLOBAL STYLES (Supports Dark Mode) ---
+// --- 3. GLOBAL STYLES ---
 const GlobalStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@100;200;300;400;500;600;700&display=swap');
     
-    :root {
-      --font-main: 'IBM Plex Sans Thai', sans-serif;
-    }
+    :root { --font-main: 'IBM Plex Sans Thai', sans-serif; }
+    * { font-family: var(--font-main) !important; box-sizing: border-box; }
+    body { background-color: #F8FAFC; color: #1E293B; font-size: 13px; transition: background-color 0.3s, color 0.3s; }
 
-    * {
-      font-family: var(--font-main) !important;
-      box-sizing: border-box;
-    }
+    /* Dark Mode */
+    body.dark { background-color: #0F172A !important; color: #F1F5F9 !important; }
+    body.dark .bg-white { background-color: #1E293B !important; color: #F1F5F9 !important; border-color: #334155 !important; }
+    body.dark .bg-gray-50, body.dark .bg-slate-50 { background-color: #0F172A !important; }
+    body.dark .text-slate-900, body.dark .text-slate-800, body.dark .text-slate-700 { color: #F1F5F9 !important; }
+    body.dark .text-slate-500, body.dark .text-slate-400 { color: #94A3B8 !important; }
+    body.dark input, body.dark select, body.dark textarea { background-color: #0F172A !important; border-color: #334155 !important; color: #F1F5F9 !important; }
+    body.dark button.bg-white { background-color: #1E293B !important; border-color: #334155 !important; color: #F1F5F9 !important; }
+    body.dark .fixed.inset-0.bg-black\\/60 { background-color: rgba(0,0,0,0.85) !important; }
 
-    body { 
-      background-color: #F8FAFC; 
-      color: #1E293B; 
-      font-size: 13px; 
-      transition: background-color 0.3s, color 0.3s;
-    }
-
-    /* Dark Mode Overrides */
-    body.dark {
-      background-color: #0F172A !important; /* Slate 900 */
-      color: #F1F5F9 !important; /* Slate 100 */
-    }
-    body.dark .bg-white {
-      background-color: #1E293B !important; /* Slate 800 */
-      color: #F1F5F9 !important;
-      border-color: #334155 !important; /* Slate 700 */
-    }
-    body.dark .bg-gray-50, body.dark .bg-slate-50 {
-      background-color: #0F172A !important;
-      color: #F1F5F9 !important;
-    }
-    body.dark .text-slate-900, body.dark .text-slate-800, body.dark .text-slate-700 {
-      color: #F1F5F9 !important;
-    }
-    body.dark .text-slate-500, body.dark .text-slate-400 {
-      color: #94A3B8 !important; /* Slate 400 */
-    }
-    body.dark input, body.dark select, body.dark textarea {
-      background-color: #0F172A !important;
-      border-color: #334155 !important;
-      color: #F1F5F9 !important;
-    }
-    body.dark button.bg-white {
-      background-color: #1E293B !important;
-      border-color: #334155 !important;
-      color: #F1F5F9 !important;
-    }
-    body.dark .border-slate-100, body.dark .border-slate-200 {
-      border-color: #334155 !important;
-    }
-    
-    /* Ensure modal backdrop is dark enough */
-    body.dark .fixed.inset-0.bg-black\\/60 {
-      background-color: rgba(0,0,0,0.85) !important;
-    }
-
-    /* Print styles must remain white */
+    /* Print Override */
     @media print {
-      body.dark, body.dark .bg-white {
-        background-color: white !important;
-        color: black !important;
-      }
+      body.dark, body.dark .bg-white { background-color: white !important; color: black !important; }
+      .no-print { display: none !important; }
     }
 
-    input, select, textarea, button {
-      font-family: var(--font-main) !important;
-      font-size: 13px !important;
-    }
-
+    input, select, textarea, button { font-family: var(--font-main) !important; font-size: 13px !important; }
     .glass-card { background: white; border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -127,7 +91,7 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-// --- 3. SUB-COMPONENTS ---
+// --- 4. SUB-COMPONENTS ---
 
 const StatCard = ({ title, value, color, iconBg, iconColor, icon: Icon }) => (
   <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all flex items-center justify-between group h-full">
@@ -146,8 +110,6 @@ const JobRow = ({ job, team, onEdit, onDelete, onDoc }) => {
   const isPaid = balance <= 0;
   const netProfit = parseFloat(job.totalPrice) - (parseFloat(job.actualOutsourceFee) || 0);
   const marginPercent = job.totalPrice > 0 ? (netProfit / job.totalPrice) * 100 : 0;
-
-  // Date Formatting for Table
   const formatDate = (d) => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
 
   return (
@@ -254,7 +216,9 @@ const JobModal = ({ job, teams, projectTypes, serviceTypes, onClose, onSave }) =
                                 <div 
                                     key={fieldName} 
                                     onClick={() => toggleFee(fieldName)} 
-                                    className={`flex justify-between items-center p-2 rounded-lg border cursor-pointer transition-all ${isChecked ? 'bg-[#C5A059]/10 border-[#C5A059]' : 'bg-gray-50 border-transparent hover:bg-gray-100'}`}
+                                    className={`flex justify-between items-center p-2 rounded-lg border cursor-pointer transition-all ${
+                                        isChecked ? 'bg-[#C5A059]/10 border-[#C5A059]' : 'bg-gray-50 border-transparent hover:bg-gray-100'
+                                    }`}
                                 >
                                     <div className="flex items-center gap-2">
                                         {isChecked ? <CheckSquare size={14} className="text-[#C5A059]"/> : <Square size={14} className="text-slate-300"/>}
@@ -377,40 +341,34 @@ const ServiceTypeModal = ({ list, onClose }) => (<div className="fixed inset-0 b
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [listViewMode, setListViewMode] = useState('table');
-  const [teams, setTeams] = useState(() => JSON.parse(localStorage.getItem('stu_teams')) || DEFAULT_TEAMS);
-  const [projectTypes, setProjectTypes] = useState(() => JSON.parse(localStorage.getItem('stu_projectTypes')) || DEFAULT_PROJECT_TYPES);
-  const [serviceTypes, setServiceTypes] = useState(() => JSON.parse(localStorage.getItem('stu_serviceTypes')) || DEFAULT_SERVICE_TYPES);
-  const [jobs, setJobs] = useState(() => JSON.parse(localStorage.getItem('stu_jobs')) || INITIAL_JOBS);
+  const [teams, setTeams] = useState(() => safeJSONParse('stu_teams', DEFAULT_TEAMS));
+  const [projectTypes, setProjectTypes] = useState(() => safeJSONParse('stu_projectTypes', DEFAULT_PROJECT_TYPES));
+  const [serviceTypes, setServiceTypes] = useState(() => safeJSONParse('stu_serviceTypes', DEFAULT_SERVICE_TYPES));
+  const [jobs, setJobs] = useState(() => safeJSONParse('stu_jobs', INITIAL_JOBS));
   const [activeModal, setActiveModal] = useState(null); 
   const [editingJob, setEditingJob] = useState(null);
   const [docConfig, setDocConfig] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = useRef(null);
+  const [isDarkMode, setIsDarkMode] = useState(() => safeJSONParse('stu_dark_mode', false));
+
+  // Sync to LocalStorage
+  useEffect(() => localStorage.setItem('stu_teams', JSON.stringify(teams)), [teams]);
+  useEffect(() => localStorage.setItem('stu_projectTypes', JSON.stringify(projectTypes)), [projectTypes]);
+  useEffect(() => localStorage.setItem('stu_serviceTypes', JSON.stringify(serviceTypes)), [serviceTypes]);
+  useEffect(() => localStorage.setItem('stu_jobs', JSON.stringify(jobs)), [jobs]);
   
-  // --- Dark Mode State ---
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('stu_dark_mode');
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('stu_teams', JSON.stringify(teams));
-    localStorage.setItem('stu_projectTypes', JSON.stringify(projectTypes));
-    localStorage.setItem('stu_serviceTypes', JSON.stringify(serviceTypes));
-    localStorage.setItem('stu_jobs', JSON.stringify(jobs));
-  }, [teams, projectTypes, serviceTypes, jobs]);
-
-  // Handle Dark Mode Toggle
+  // Sync Dark Mode
   useEffect(() => {
     localStorage.setItem('stu_dark_mode', JSON.stringify(isDarkMode));
-    if (isDarkMode) {
-      document.body.classList.add('dark');
-    } else {
-      document.body.classList.remove('dark');
-    }
+    if (isDarkMode) document.body.classList.add('dark');
+    else document.body.classList.remove('dark');
   }, [isDarkMode]);
 
-  useEffect(() => { if (!teams || teams.length === 0) setTeams(DEFAULT_TEAMS); }, []);
+  // Force Restore Default Teams if Empty
+  useEffect(() => {
+    if (!teams || teams.length === 0) setTeams(DEFAULT_TEAMS);
+  }, [teams]);
 
   const stats = useMemo(() => {
     let totalProfit = 0, totalBalance = 0;
@@ -449,6 +407,7 @@ export default function App() {
       <GlobalStyles />
       <div className="min-h-screen bg-gray-50/50 font-sans text-slate-800 p-4 md:p-6 transition-colors duration-300">
         <div className="max-w-[1400px] mx-auto">
+          {/* Header & Nav */}
           <nav className="mb-6 bg-white/80 backdrop-blur-xl p-3 rounded-2xl shadow-sm border border-white/20 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-2 z-40 no-print">
               <div className="flex items-center gap-3 px-2"><div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl text-white font-bold text-xl shadow-lg">S</div><div><h1 className="text-lg font-bold uppercase tracking-tight text-slate-900">SUTHEECHU <span className="text-[#C5A059] font-light">DESIGN</span></h1><p className="text-[9px] uppercase tracking-widest text-slate-400 font-semibold">Management System</p></div></div>
               <div className="flex bg-gray-100/80 p-1 rounded-xl"><button onClick={() => setCurrentView('dashboard')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'dashboard' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}><LayoutDashboard size={14}/> Dashboard</button><button onClick={() => setCurrentView('calendar')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'calendar' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}><FileSpreadsheet size={14}/> Calendar</button></div>

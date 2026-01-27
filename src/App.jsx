@@ -389,10 +389,12 @@ export default function App() {
       totalProfit += profit;
       if (balance > 0) totalBalance += balance;
       if (j.deliveryDate) {
-         const d = new Date(j.deliveryDate); const y = d.getFullYear(); const m = d.getMonth() + 1;
-         const q = m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4';
-         if (!yDataRaw[y]) yDataRaw[y] = 0; yDataRaw[y] += profit;
-         if (y === 2025) qDataRaw[q] += profit;
+         try {
+             const d = new Date(j.deliveryDate); const y = d.getFullYear(); const m = d.getMonth() + 1;
+             const q = m <= 3 ? 'Q1' : m <= 6 ? 'Q2' : m <= 9 ? 'Q3' : 'Q4';
+             if (!yDataRaw[y]) yDataRaw[y] = 0; yDataRaw[y] += profit;
+             if (y === 2025) qDataRaw[q] += profit;
+         } catch (e) {}
       }
     });
     const qData2025 = Object.keys(qDataRaw).map(k => ({ name: k, profit: qDataRaw[k] }));

@@ -31,7 +31,7 @@ const GlobalStyles = () => (
 );
 
 // ==========================================
-// 🔥 CORE PARSER
+// 🔥 CORE PARSER (อัปเดตใหม่ ป้องกันเว็บค้าง 100%)
 // ==========================================
 const parseCSV = (text) => {
   const rows = text.split('\n').filter(row => row.trim());
@@ -39,57 +39,68 @@ const parseCSV = (text) => {
 
   return rows.slice(1).map((row) => {
     const cols = [];
-    const regex = /(?:^|,)(\"(?:[^\"]|\"\")*\"|[^,]*)/g;
-    let match;
-    while ((match = regex.exec(row)) !== null) {
-      let val = match[1];
-      if (val === undefined) val = '';
-      val = val.replace(/^\"|\"$/g, '').replace(/\"\"/g, '"').trim();
-      cols.push(val);
-      // ป้องกัน Infinite Loop จาก regex
-      if (match.index === regex.lastIndex) regex.lastIndex++;
+    let curr = '';
+    let inQuotes = false;
+
+    // ใช้วิธีอ่านทีละตัวอักษร ปลอดภัยกว่า Regex ไม่มีทางเกิด Infinite Loop
+    for (let i = 0; i < row.length; i++) {
+      const char = row[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        cols.push(curr);
+        curr = '';
+      } else {
+        curr += char;
+      }
     }
-    if (cols.length < 7) return null;
+    cols.push(curr); // ใส่คอลัมน์สุดท้าย
+
+    // ทำความสะอาดข้อความและลบเครื่องหมายคำพูดส่วนเกิน
+    const cleanCols = cols.map(val => {
+      return val.trim().replace(/^"|"$/g, '').replace(/""/g, '"');
+    });
+
+    if (cleanCols.length < 7) return null;
 
     const pm = (val) => {
       const num = parseFloat((val ?? '').toString().replace(/[$,]/g, ''));
       return isNaN(num) ? 0 : num;
     };
 
-    const no = parseInt(cols[0]) || 0;
-    const client      = cols[6]  ?? 'ไม่ระบุชื่อ';
-    const teamName    = cols[5]  ?? 'ไม่ระบุ';
-    const projectType = cols[7]  ?? 'อื่นๆ';
-    const serviceType = cols[8]  ?? 'อื่นๆ';
-    const spec        = cols[9]  ?? '';
-    const area        = parseFloat(cols[10]) || 0;
+    const no = parseInt(cleanCols[0]) || 0;
+    const client      = cleanCols[6]  ?? 'ไม่ระบุชื่อ';
+    const teamName    = cleanCols[5]  ?? 'ไม่ระบุ';
+    const projectType = cleanCols[7]  ?? 'อื่นๆ';
+    const serviceType = cleanCols[8]  ?? 'อื่นๆ';
+    const spec        = cleanCols[9]  ?? '';
+    const area        = parseFloat(cleanCols[10]) || 0;
 
-    const designFee   = pm(cols[12]);
-    const feeEng      = pm(cols[13]);
-    const feeArch     = pm(cols[14]);
-    const feeSuper    = pm(cols[15]);
+    const designFee   = pm(cleanCols[12]);
+    const feeEng      = pm(cleanCols[13]);
+    const feeArch     = pm(cleanCols[14]);
+    const feeSuper    = pm(cleanCols[15]);
     const totalProfessionalFees = feeEng + feeArch + feeSuper;
 
-    const actualOutsourceFee = pm(cols[16]);
-    const pendingAmount      = pm(cols[17]); 
-    const sheetTotal         = pendingAmount; 
-    const receivedAmount     = pm(cols[18]);
-    const sheetProfit        = pm(cols[19]);
-    const isMoneyReceived    = (cols[20] ?? '').toUpperCase() === 'TRUE';
+    const actualOutsourceFee = pm(cleanCols[16]);
+    const pendingAmount      = pm(cleanCols[17]); 
+    const receivedAmount     = pm(cleanCols[18]);
+    const sheetProfit        = pm(cleanCols[19]);
+    const isMoneyReceived    = (cleanCols[20] ?? '').toUpperCase() === 'TRUE';
 
     const calculatedTotal = designFee + totalProfessionalFees;
     const totalPrice = calculatedTotal;
 
-    const startDate    = convertSheetDate(cols[2]);
-    const deliveryDate = convertSheetDate(cols[3]);
-    const imageLink    = processImageLink(cols[22]);
+    const startDate    = convertSheetDate(cleanCols[2]);
+    const deliveryDate = convertSheetDate(cleanCols[3]);
+    const imageLink    = processImageLink(cleanCols[22]);
 
     return {
       id: `G${no}`, no, client, teamName, projectType, serviceType, spec, area,
       totalPrice, receivedAmount, pendingAmount, sheetProfit, actualOutsourceFee, isMoneyReceived,
       designFee, feeEng, feeArch, feeSuper, totalProfessionalFees,
       startDate, deliveryDate,
-      status: (cols[4] === 'Done' || cols[4] === 'TRUE' || cols[4] === 'ส่งงานแล้ว') ? 'FINISHED' : 'IN_PROGRESS',
+      status: (cleanCols[4] === 'Done' || cleanCols[4] === 'TRUE' || cleanCols[4] === 'ส่งงานแล้ว') ? 'FINISHED' : 'IN_PROGRESS',
       csvImage: imageLink
     };
   }).filter(j => j && j.client);

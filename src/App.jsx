@@ -31,7 +31,7 @@ const GlobalStyles = () => (
 );
 
 // ==========================================
-// 🔥 CORE PARSER (อัปเดตใหม่ ป้องกันเว็บค้าง 100%)
+// 🔥 CORE PARSER (เวอร์ชันใหม่ ป้องกันการค้าง 100%)
 // ==========================================
 const parseCSV = (text) => {
   const rows = text.split('\n').filter(row => row.trim());
@@ -42,7 +42,6 @@ const parseCSV = (text) => {
     let curr = '';
     let inQuotes = false;
 
-    // ใช้วิธีอ่านทีละตัวอักษร ปลอดภัยกว่า Regex ไม่มีทางเกิด Infinite Loop
     for (let i = 0; i < row.length; i++) {
       const char = row[i];
       if (char === '"') {
@@ -54,13 +53,9 @@ const parseCSV = (text) => {
         curr += char;
       }
     }
-    cols.push(curr); // ใส่คอลัมน์สุดท้าย
+    cols.push(curr);
 
-    // ทำความสะอาดข้อความและลบเครื่องหมายคำพูดส่วนเกิน
-    const cleanCols = cols.map(val => {
-      return val.trim().replace(/^"|"$/g, '').replace(/""/g, '"');
-    });
-
+    const cleanCols = cols.map(val => val.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
     if (cleanCols.length < 7) return null;
 
     const pm = (val) => {
@@ -446,7 +441,6 @@ export default function App() {
             </div>
           )}
 
-          {/* ✅ แก้บั๊กหน้าเว็บค้าง เปลี่ยนการเรียกใช้ AnalyticsView และ CalendarView ใหม่ */}
           {currentView === 'analytics' && <AnalyticsView stats={stats} />}
           {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} />}
 

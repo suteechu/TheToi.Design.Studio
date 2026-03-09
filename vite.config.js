@@ -4,5 +4,5 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: './', // ✅ แก้ตรงนี้เป็น './' ครับ (จุดและสแลช)
+  base: '/TheToi.Design.Studio/', // ✅ สำหรับ GitHub Pages ต้องมีบรรทัดนี้ครับ
 })

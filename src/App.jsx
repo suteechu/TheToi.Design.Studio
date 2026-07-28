@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, LayoutDashboard, TrendingUp, Table as TableIcon, List,
   Clock, CheckCircle, AlertTriangle, Wallet, Edit3, RefreshCw, 
-  BarChart2, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight
+  BarChart2, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Columns
 } from 'lucide-react';
 
 // --- Imports Components ---
@@ -12,7 +12,8 @@ import CountdownList from './components/CountdownList';
 import CalendarView from './components/CalendarView';
 import DocSelectModal from './components/DocSelectModal';
 import DocPreviewModal from './components/DocPreviewModal';
-import AnalyticsView from './components/AnalyticsView';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import KanbanBoard from './components/KanbanBoard';
 
 // --- Imports Helpers ---
 import { safeJSONParse, formatCurrency, convertSheetDate, processImageLink } from './utils/helpers';
@@ -26,10 +27,7 @@ const ITEMS_PER_PAGE = 20;
 // ==========================================
 // 2. STYLES
 // ==========================================
-const GlobalStyles = () => (
-  <style>{`@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@100;200;300;400;500;600;700&display=swap');:root{--font-main:'IBM Plex Sans Thai',sans-serif}*{font-family:var(--font-main)!important;box-sizing:border-box}body{background-color:#F8FAFC;color:#1E293B;font-size:13px}input,button,select,textarea{font-family:var(--font-main)!important;font-size:13px!important}.glass-card{background:#fff;border:1px solid #E2E8F0;box-shadow:0 2px 4px rgba(0,0,0,.05)}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:0 0}::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:2px}@media print{.no-print{display:none!important}}`}</style>
-);
-
+// Removed GlobalStyles as they are now in index.css
 // ==========================================
 // 🔥 CORE PARSER (เวอร์ชันใหม่ ป้องกันการค้าง 100%)
 // ==========================================
@@ -207,8 +205,9 @@ export default function App() {
   const stats = useMemo(() => {
     let totalProfit = 0, totalBalance = 0;
     let profit2024 = 0, profit2025 = 0, profit2026 = 0;
-    const monthlyDataRaw = Array(12).fill(0);
+    const monthlyDataRaw = Array(12).fill(0).map(() => ({ revenue: 0, profit: 0 }));
     const typeCount = {};
+    const typeRevenue = {};
     const teamRevenue = {};
     let totalRevenue = 0;
     let totalCost = 0;
@@ -225,6 +224,8 @@ export default function App() {
       totalBalance += balance;
       
       typeCount[j.projectType] = (typeCount[j.projectType] || 0) + 1;
+      typeRevenue[j.projectType] = (typeRevenue[j.projectType] || 0) + price;
+      
       if (j.teamName) { teamRevenue[j.teamName] = (teamRevenue[j.teamName] || 0) + price; }
       if (j.deliveryDate) {
         try {
@@ -232,21 +233,26 @@ export default function App() {
           if (!isNaN(d.getTime())) {
             const y = d.getFullYear(); const m = d.getMonth();
             if (y === 2024) profit2024 += profit;
-            if (y === 2025) { profit2025 += profit; monthlyDataRaw[m] += profit; }
+            if (y === 2025) { 
+              profit2025 += profit; 
+              monthlyDataRaw[m].profit += profit; 
+              monthlyDataRaw[m].revenue += price;
+            }
             if (y === 2026) profit2026 += profit;
           }
         } catch (e) {}
       }
     });
 
+    const revenueByType = Object.entries(typeRevenue).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     const pieData = Object.entries(typeCount).map(([name, value]) => ({ name, value }));
     const donutData = [{ name: 'ต้นทุน', value: totalCost }, { name: 'กำไร', value: totalProfit }];
     const topTeams = Object.entries(teamRevenue).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([name, value]) => ({ name, value }));
     const mNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-    const monthlyChartData = monthlyDataRaw.map((p, i) => ({ name: mNames[i], profit: p }));
+    const monthlyChartData = monthlyDataRaw.map((data, i) => ({ name: mNames[i], revenue: data.revenue, profit: data.profit }));
     const avgTicket = jobs.length > 0 ? totalRevenue / jobs.length : 0;
     
-    return { totalProfit, totalBalance, profit2024, profit2025, profit2026, monthlyChartData, pieData, donutData, topTeams, avgTicket };
+    return { totalRevenue, totalProfit, totalBalance, profit2024, profit2025, profit2026, monthlyChartData, pieData, donutData, topTeams, avgTicket, revenueByType };
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
@@ -340,68 +346,68 @@ export default function App() {
 
   return (
     <>
-      <GlobalStyles />
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileChange} />
 
-      <div className="min-h-screen bg-gray-50/50 font-sans text-slate-800 p-4 md:p-6 transition-colors duration-300">
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-800 p-4 md:p-6 transition-colors duration-300">
         <div className="max-w-[1400px] mx-auto">
           {/* Header & Nav */}
-          <nav className="mb-6 bg-white/80 backdrop-blur-xl p-3 rounded-2xl shadow-sm border border-white/20 flex flex-col md:flex-row justify-between items-center gap-3 sticky top-2 z-40 no-print">
-            <div className="flex items-center gap-3 px-2">
-              <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl text-white font-bold text-xl shadow-lg">S</div>
+          <nav className="mb-8 glass-card p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 sticky top-4 z-40 no-print transition-all duration-300">
+            <div className="flex items-center gap-4 px-2 hover-lift">
+              <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl text-gold-400 font-bold text-2xl shadow-lg border border-slate-700">S</div>
               <div>
-                <h1 className="text-lg font-bold uppercase tracking-tight text-slate-900">SUTHEECHU <span className="text-[#C5A059] font-light">DESIGN</span></h1>
-                <p className="text-[9px] uppercase tracking-widest text-slate-400 font-semibold">Management System</p>
+                <h1 className="text-xl font-bold uppercase tracking-tight text-slate-900">SUTHEECHU <span className="text-gold-500 font-light">DESIGN</span></h1>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-semibold mt-0.5">Management System</p>
               </div>
             </div>
-            <div className="flex bg-gray-100/80 p-1 rounded-xl">
-              <button onClick={() => setCurrentView('dashboard')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'dashboard' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}><LayoutDashboard size={14}/> Dashboard</button>
-              <button onClick={() => setCurrentView('calendar')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'calendar' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}><CalendarIcon size={14}/> Calendar</button>
-              <button onClick={() => setCurrentView('analytics')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'analytics' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'}`}><TrendingUp size={14}/> Analytics</button>
+            <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/60 shadow-inner">
+              <button onClick={() => setCurrentView('dashboard')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'dashboard' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><LayoutDashboard size={16}/> Dashboard</button>
+              <button onClick={() => setCurrentView('calendar')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'calendar' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><CalendarIcon size={16}/> Calendar</button>
+              <button onClick={() => setCurrentView('analytics')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'analytics' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><TrendingUp size={16}/> Analytics</button>
             </div>
-            <div className="flex gap-2 items-center">
-              <a href="https://docs.google.com/spreadsheets/d/1-BbEaEcDijNyE1h-riqzXFL1rM8uR7b2/edit?gid=1035027015#gid=1035027015" target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 text-slate-500 hover:text-emerald-600 flex items-center gap-2 transition-all shadow-sm" title="แก้ไขข้อมูลใน Google Sheets"><Edit3 size={16}/> <span className="text-[10px] font-bold hidden sm:inline">Edit Sheet</span></a>
+            <div className="flex gap-3 items-center">
+              <a href="https://docs.google.com/spreadsheets/d/1-BbEaEcDijNyE1h-riqzXFL1rM8uR7b2/edit?gid=1035027015#gid=1035027015" target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:border-gold-300 text-slate-600 hover:text-gold-600 flex items-center gap-2 transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5" title="แก้ไขข้อมูลใน Google Sheets"><Edit3 size={16}/> <span className="text-xs font-bold hidden sm:inline">Edit Sheet</span></a>
               <div className="w-px h-8 bg-slate-200 mx-1"></div>
-              <button onClick={() => window.location.reload()} className="p-2.5 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 text-slate-500 hover:text-black" title="Refresh Data"><RefreshCw size={16}/></button>
+              <button onClick={() => window.location.reload()} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 hover:text-slate-900 transition-all shadow-sm hover:shadow-md hover:rotate-180 duration-500" title="Refresh Data"><RefreshCw size={16}/></button>
             </div>
           </nav>
 
           {currentView === 'dashboard' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
               <div className="flex flex-col xl:flex-row justify-between mb-6 items-end gap-4">
-                <div className="flex-1 w-full bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-gray-50 p-2 rounded-xl"><Search size={16} className="text-slate-400"/></div>
-                    <input className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder:text-slate-300" placeholder="ค้นหาชื่อลูกค้า..." onChange={e => setSearchTerm(e.target.value)} />
-                    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-                      <button onClick={() => setListViewMode('table')} className={`p-2 rounded-lg transition-all ${listViewMode === 'table' ? 'bg-white text-black shadow-sm' : 'text-slate-400'}`}><TableIcon size={16}/></button>
-                      <button onClick={() => setListViewMode('list')} className={`p-2 rounded-lg transition-all ${listViewMode === 'list' ? 'bg-white text-black shadow-sm' : 'text-slate-400'}`}><List size={16}/></button>
+                <div className="flex-1 w-full glass-card p-2 rounded-2xl flex flex-col gap-3">
+                  <div className="flex items-center gap-3 px-2">
+                    <div className="bg-slate-100 p-2.5 rounded-xl"><Search size={18} className="text-slate-400"/></div>
+                    <input className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder:text-slate-400 py-2 outline-none" placeholder="ค้นหาชื่อลูกค้า หรือ รหัสโครงการ..." onChange={e => setSearchTerm(e.target.value)} />
+                    <div className="flex gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200/50">
+                      <button onClick={() => setListViewMode('table')} className={`p-2 rounded-lg transition-all duration-300 ${listViewMode === 'table' ? 'bg-white text-slate-900 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`} title="Table View"><TableIcon size={18}/></button>
+                      <button onClick={() => setListViewMode('list')} className={`p-2 rounded-lg transition-all duration-300 ${listViewMode === 'list' ? 'bg-white text-slate-900 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`} title="Grid View"><List size={18}/></button>
+                      <button onClick={() => setListViewMode('board')} className={`p-2 rounded-lg transition-all duration-300 ${listViewMode === 'board' ? 'bg-white text-slate-900 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`} title="Board View"><Columns size={18}/></button>
                     </div>
                   </div>
-                  <div className="flex gap-2 border-t border-slate-100 pt-2 overflow-x-auto pb-1">
+                  <div className="flex gap-2 border-t border-slate-100/50 pt-3 px-1 overflow-x-auto pb-1 custom-scrollbar">
                     {[
-                      { id: 'ALL', label: 'ทั้งหมด', icon: List },
-                      { id: 'ACTIVE', label: 'กำลังดำเนินการ', icon: Clock },
-                      { id: 'FINISHED', label: 'เสร็จสิ้นแล้ว', icon: CheckCircle },
-                      { id: 'UNPAID', label: 'ค้างรับ', icon: AlertTriangle }
+                      { id: 'ALL', label: 'ทั้งหมด', icon: List, activeClass: 'bg-slate-900 text-white' },
+                      { id: 'ACTIVE', label: 'กำลังดำเนินการ', icon: Clock, activeClass: 'bg-blue-600 text-white' },
+                      { id: 'FINISHED', label: 'เสร็จสิ้นแล้ว', icon: CheckCircle, activeClass: 'bg-emerald-600 text-white' },
+                      { id: 'UNPAID', label: 'ค้างรับ', icon: AlertTriangle, activeClass: 'bg-gold-500 text-white' }
                     ].map(tab => (
-                      <button key={tab.id} onClick={() => setFilterStatus(tab.id)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
-                        <tab.icon size={12}/> {tab.label}
+                      <button key={tab.id} onClick={() => setFilterStatus(tab.id)} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 whitespace-nowrap border ${filterStatus === tab.id ? tab.activeClass + ' border-transparent shadow-md scale-[1.02]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-white hover:shadow-sm'}`}>
+                        <tab.icon size={14}/> {tab.label}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
-                <StatCard title="กำไรรวม (Total Profit)" value={stats.totalProfit} color="#10B981" iconBg="bg-emerald-50" iconColor="text-emerald-500" icon={TrendingUp} />
-                <StatCard title="ยอดค้างรับ (Outstanding)" value={stats.totalBalance} color="#EF4444" iconBg="bg-red-50" iconColor="text-red-500" icon={AlertTriangle} />
-                <StatCard title="Net Profit 2024" value={stats.profit2024} color="#64748B" iconBg="bg-slate-50" iconColor="text-slate-500" icon={Wallet} />
-                <StatCard title="Net Profit 2025" value={stats.profit2025} color="#3B82F6" iconBg="bg-blue-50" iconColor="text-blue-500" icon={Wallet} />
-                <StatCard title="Net Profit 2026" value={stats.profit2026} color="#C5A059" iconBg="bg-[#C5A059]/10" iconColor="text-[#C5A059]" icon={Wallet} />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-8">
+                <StatCard title="กำไรรวม (Total Profit)" value={stats.totalProfit} color="#10B981" iconBg="bg-emerald-100/50" iconColor="text-emerald-600" icon={TrendingUp} />
+                <StatCard title="ยอดค้างรับ (Outstanding)" value={stats.totalBalance} color="#EF4444" iconBg="bg-red-100/50" iconColor="text-red-600" icon={AlertTriangle} />
+                <StatCard title="Net Profit 2024" value={stats.profit2024} color="#64748B" iconBg="bg-slate-100" iconColor="text-slate-600" icon={Wallet} />
+                <StatCard title="Net Profit 2025" value={stats.profit2025} color="#3B82F6" iconBg="bg-blue-100/50" iconColor="text-blue-600" icon={Wallet} />
+                <StatCard title="Net Profit 2026" value={stats.profit2026} color="#C5A059" iconBg="bg-gold-100/50" iconColor="text-gold-600" icon={Wallet} />
               </div>
 
-              <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden min-h-[400px]">
+              <div className="glass-card overflow-hidden min-h-[400px]">
                 {listViewMode === 'table' ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -431,9 +437,14 @@ export default function App() {
                     </table>
                     <PaginationControls />
                   </div>
-                ) : (
+                ) : listViewMode === 'list' ? (
                   <div>
                     <CountdownList jobs={paginatedJobs} customImages={customImages} onEditImage={handleEditImage} onDoc={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} onShare={(job) => handleShare(job)} />
+                    <PaginationControls />
+                  </div>
+                ) : (
+                  <div>
+                    <KanbanBoard jobs={paginatedJobs} onDoc={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} />
                     <PaginationControls />
                   </div>
                 )}
@@ -441,7 +452,7 @@ export default function App() {
             </div>
           )}
 
-          {currentView === 'analytics' && <AnalyticsView stats={stats} />}
+          {currentView === 'analytics' && <AnalyticsDashboard stats={stats} />}
           {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} />}
 
         </div>

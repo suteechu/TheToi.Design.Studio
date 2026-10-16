@@ -29,14 +29,14 @@ export const formatThaiDate = (dateString) => {
       month: 'short', 
       year: '2-digit' 
     });
-  } catch (e) { return '-'; }
+  } catch { return '-'; }
 };
 
 // แปลงวันที่จาก Google Sheet ให้เป็น format มาตรฐาน
 export const convertSheetDate = (dateStr) => {
   if (!dateStr) return '';
   dateStr = dateStr.split(' ')[0];
-  const parts = dateStr.split(/[\-/]/);
+  const parts = dateStr.split(/[/-]/);
   if (parts.length === 3) {
     let [d, m, y] = parts;
     if (d.length === 4) return `${d}-${m.padStart(2,'0')}-${y.padStart(2,'0')}`; // กรณี yyyy-mm-dd
@@ -53,8 +53,8 @@ export const processImageLink = (url) => {
   if (!url) return null;
   const trimmed = url.trim();
   if (trimmed.includes('drive.google.com')) {
-    let idMatch = trimmed.match(/\/d\/([a-zA-Z0-9_\-]+)/);
-    if (!idMatch) idMatch = trimmed.match(/id=([a-zA-Z0-9_\-]+)/);
+    let idMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (!idMatch) idMatch = trimmed.match(/id=([a-zA-Z0-9_-]+)/);
     if (idMatch) {
       return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
     }

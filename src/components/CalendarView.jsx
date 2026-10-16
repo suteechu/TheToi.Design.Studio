@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, DollarSign } from 'lucide-react';
-import { formatCurrency } from '../utils/helpers';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock } from 'lucide-react';
 
 export default function CalendarView({ jobs, onJobClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -63,7 +62,7 @@ export default function CalendarView({ jobs, onJobClick }) {
             try {
               const jd = new Date(j.deliveryDate);
               return jd.getDate() === d && jd.getMonth() === month && jd.getFullYear() === year;
-            } catch (e) { return false; }
+            } catch { return false; }
           });
 
           return (

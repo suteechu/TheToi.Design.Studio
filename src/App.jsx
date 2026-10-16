@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, LayoutDashboard, TrendingUp, Table as TableIcon, List,
   Clock, CheckCircle, AlertTriangle, Wallet, Edit3, RefreshCw, 
-  BarChart2, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Columns
+  ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Columns
 } from 'lucide-react';
 
 // --- Imports Components ---
@@ -100,6 +100,55 @@ const parseCSV = (text) => {
 };
 
 // ==========================================
+// TABLE & PAGINATION COMPONENTS
+// ==========================================
+const ThSortable = ({ label, sortKey, align = 'text-left', width, sortConfig, onSort }) => (
+  <th 
+    className={`px-6 py-4 ${align} cursor-pointer group hover:bg-slate-100 transition-colors select-none ${width ? width : ''}`} 
+    onClick={() => onSort(sortKey)}
+  >
+    <div className={`flex items-center gap-1 ${align === 'text-right' ? 'justify-end' : align === 'text-center' ? 'justify-center' : 'justify-start'}`}>
+      {label} 
+      {sortConfig.key === sortKey ? (
+        <ArrowUpDown size={12} className={`ml-1 ${sortConfig.direction === 'asc' ? 'text-emerald-500' : 'text-red-500'}`} />
+      ) : (
+        <ArrowUpDown size={12} className="ml-1 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+      )}
+    </div>
+  </th>
+);
+
+const PaginationControls = ({ totalPages, currentPage, itemsPerPage, totalItems, onPageChange }) => {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex justify-between items-center px-6 py-4 border-t border-slate-100 bg-white">
+      <div className="text-xs text-slate-400">
+        แสดง {((currentPage - 1) * itemsPerPage) + 1} ถึง {Math.min(currentPage * itemsPerPage, totalItems)} จาก {totalItems} รายการ
+      </div>
+      <div className="flex gap-2">
+        <button 
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="p-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-500"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className="flex items-center px-3 text-sm font-bold text-slate-600 bg-slate-50 rounded-lg border border-slate-100">
+          หน้า {currentPage} / {totalPages}
+        </span>
+        <button 
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="p-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-500"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // 3. MAIN APP COMPONENT
 // ==========================================
 export default function App() {
@@ -109,7 +158,13 @@ export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [listViewMode, setListViewMode] = useState('table');
   const [customImages, setCustomImages] = useState(() => safeJSONParse('stu_custom_images', {}));
-  useEffect(() => { try { localStorage.setItem('stu_custom_images', JSON.stringify(customImages)); } catch (e) {} }, [customImages]);
+  useEffect(() => { 
+    try { 
+      localStorage.setItem('stu_custom_images', JSON.stringify(customImages)); 
+    } catch { 
+      /* ignore storage write error */ 
+    } 
+  }, [customImages]);
   const fileInputRef = useRef(null);
   const [editingJobId, setEditingJobId] = useState(null);
 
@@ -124,12 +179,12 @@ export default function App() {
           const newJobs = parseCSV(csv);
           if(newJobs.length > 0) setJobs(newJobs);
         })
-        .catch(err => console.error("Error fetching Google Sheet:", err));
+        .catch(err => console.error("Error fetching Google Sheet:", err))
+        .finally(() => setLoading(false));
     }
   }, []);
 
   const [filterStatus, setFilterStatus] = useState('ALL');
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, filterStatus]);
 
   const [activeModal, setActiveModal] = useState(null);
   const [docConfig, setDocConfig] = useState(null);
@@ -240,7 +295,9 @@ export default function App() {
             }
             if (y === 2026) profit2026 += profit;
           }
-        } catch (e) {}
+        } catch {
+          /* ignore invalid date parse */
+        }
       }
     });
 
@@ -298,52 +355,6 @@ export default function App() {
 
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
 
-  const ThSortable = ({ label, sortKey, align = 'text-left', width }) => (
-    <th 
-      className={`px-6 py-4 ${align} cursor-pointer group hover:bg-slate-100 transition-colors select-none ${width ? width : ''}`} 
-      onClick={() => handleSort(sortKey)}
-    >
-      <div className={`flex items-center gap-1 ${align === 'text-right' ? 'justify-end' : align === 'text-center' ? 'justify-center' : 'justify-start'}`}>
-        {label} 
-        {sortConfig.key === sortKey ? (
-          <ArrowUpDown size={12} className={`ml-1 ${sortConfig.direction === 'asc' ? 'text-emerald-500' : 'text-red-500'}`} />
-        ) : (
-          <ArrowUpDown size={12} className="ml-1 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-        )}
-      </div>
-    </th>
-  );
-
-  const PaginationControls = () => {
-    if (totalPages <= 1) return null;
-    return (
-      <div className="flex justify-between items-center px-6 py-4 border-t border-slate-100 bg-white">
-        <div className="text-xs text-slate-400">
-          แสดง {((currentPage - 1) * ITEMS_PER_PAGE) + 1} ถึง {Math.min(currentPage * ITEMS_PER_PAGE, filteredJobs.length)} จาก {filteredJobs.length} รายการ
-        </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="p-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-500"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="flex items-center px-3 text-sm font-bold text-slate-600 bg-slate-50 rounded-lg border border-slate-100">
-            หน้า {currentPage} / {totalPages}
-          </span>
-          <button 
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="p-2 border rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-500"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <>
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileChange} />
@@ -377,7 +388,7 @@ export default function App() {
                 <div className="flex-1 w-full glass-card p-2 rounded-2xl flex flex-col gap-3">
                   <div className="flex items-center gap-3 px-2">
                     <div className="bg-slate-100 p-2.5 rounded-xl"><Search size={18} className="text-slate-400"/></div>
-                    <input className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder:text-slate-400 py-2 outline-none" placeholder="ค้นหาชื่อลูกค้า หรือ รหัสโครงการ..." onChange={e => setSearchTerm(e.target.value)} />
+                    <input className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder:text-slate-400 py-2 outline-none" placeholder="ค้นหาชื่อลูกค้า หรือ รหัสโครงการ..." onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
                     <div className="flex gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200/50">
                       <button onClick={() => setListViewMode('table')} className={`p-2 rounded-lg transition-all duration-300 ${listViewMode === 'table' ? 'bg-white text-slate-900 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`} title="Table View"><TableIcon size={18}/></button>
                       <button onClick={() => setListViewMode('list')} className={`p-2 rounded-lg transition-all duration-300 ${listViewMode === 'list' ? 'bg-white text-slate-900 shadow-sm scale-105' : 'text-slate-400 hover:text-slate-600'}`} title="Grid View"><List size={18}/></button>
@@ -391,7 +402,7 @@ export default function App() {
                       { id: 'FINISHED', label: 'เสร็จสิ้นแล้ว', icon: CheckCircle, activeClass: 'bg-emerald-600 text-white' },
                       { id: 'UNPAID', label: 'ค้างรับ', icon: AlertTriangle, activeClass: 'bg-gold-500 text-white' }
                     ].map(tab => (
-                      <button key={tab.id} onClick={() => setFilterStatus(tab.id)} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 whitespace-nowrap border ${filterStatus === tab.id ? tab.activeClass + ' border-transparent shadow-md scale-[1.02]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-white hover:shadow-sm'}`}>
+                      <button key={tab.id} onClick={() => { setFilterStatus(tab.id); setCurrentPage(1); }} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all duration-300 whitespace-nowrap border ${filterStatus === tab.id ? tab.activeClass + ' border-transparent shadow-md scale-[1.02]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-white hover:shadow-sm'}`}>
                         <tab.icon size={14}/> {tab.label}
                       </button>
                     ))}
@@ -413,12 +424,12 @@ export default function App() {
                     <table className="w-full text-left">
                       <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                         <tr>
-                          <ThSortable label="#" sortKey="no" align="text-center" />
-                          <ThSortable label="Project" sortKey="client" />
-                          <ThSortable label="Delivery Date" sortKey="deliveryDate" align="text-center" />
-                          <ThSortable label="Contract" sortKey="totalPrice" align="text-right" />
-                          <ThSortable label="Profit" sortKey="sheetProfit" align="text-right" />
-                          <ThSortable label="Balance" sortKey="balance" align="text-right" />
+                          <ThSortable label="#" sortKey="no" align="text-center" sortConfig={sortConfig} onSort={handleSort} />
+                          <ThSortable label="Project" sortKey="client" sortConfig={sortConfig} onSort={handleSort} />
+                          <ThSortable label="Delivery Date" sortKey="deliveryDate" align="text-center" sortConfig={sortConfig} onSort={handleSort} />
+                          <ThSortable label="Contract" sortKey="totalPrice" align="text-right" sortConfig={sortConfig} onSort={handleSort} />
+                          <ThSortable label="Profit" sortKey="sheetProfit" align="text-right" sortConfig={sortConfig} onSort={handleSort} />
+                          <ThSortable label="Balance" sortKey="balance" align="text-right" sortConfig={sortConfig} onSort={handleSort} />
                           <th className="px-6 py-4 text-center">Manage</th>
                         </tr>
                       </thead>
@@ -427,25 +438,25 @@ export default function App() {
                           <JobRow key={job.id} job={job}
                             displayImage={customImages[job.id] || job.image || job.csvImage}
                             onEditImage={handleEditImage}
-                            onDoc={() => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }}
+                            onDoc={() => openDocSelect(job)}
                             onShare={handleShare}
                           />
                         )) : (
-                          <tr><td colSpan="7" className="text-center py-10 text-slate-400">กำลังโหลดข้อมูล หรือไม่พบข้อมูล...</td></tr>
+                          <tr><td colSpan="7" className="text-center py-10 text-slate-400">{loading ? 'กำลังโหลดข้อมูลจาก Google Sheets...' : 'ไม่พบข้อมูลตามเงื่อนไขที่ค้นหา'}</td></tr>
                         )}
                       </tbody>
                     </table>
-                    <PaginationControls />
+                    <PaginationControls totalPages={totalPages} currentPage={currentPage} itemsPerPage={ITEMS_PER_PAGE} totalItems={filteredJobs.length} onPageChange={setCurrentPage} />
                   </div>
                 ) : listViewMode === 'list' ? (
                   <div>
-                    <CountdownList jobs={paginatedJobs} customImages={customImages} onEditImage={handleEditImage} onDoc={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} onShare={(job) => handleShare(job)} />
-                    <PaginationControls />
+                    <CountdownList jobs={paginatedJobs} customImages={customImages} onEditImage={handleEditImage} onDoc={openDocSelect} onShare={(job) => handleShare(job)} />
+                    <PaginationControls totalPages={totalPages} currentPage={currentPage} itemsPerPage={ITEMS_PER_PAGE} totalItems={filteredJobs.length} onPageChange={setCurrentPage} />
                   </div>
                 ) : (
                   <div>
-                    <KanbanBoard jobs={paginatedJobs} onDoc={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} />
-                    <PaginationControls />
+                    <KanbanBoard jobs={paginatedJobs} onDoc={openDocSelect} />
+                    <PaginationControls totalPages={totalPages} currentPage={currentPage} itemsPerPage={ITEMS_PER_PAGE} totalItems={filteredJobs.length} onPageChange={setCurrentPage} />
                   </div>
                 )}
               </div>
@@ -453,7 +464,7 @@ export default function App() {
           )}
 
           {currentView === 'analytics' && <AnalyticsDashboard stats={stats} />}
-          {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={(job) => { setDocConfig({ jobId: job.id }); setActiveModal('docSelect'); }} />}
+          {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={openDocSelect} />}
 
         </div>
       </div>

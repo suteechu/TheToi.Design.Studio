@@ -4,9 +4,16 @@ import { useReactToPrint } from 'react-to-print'; // ✅ เรียกใช�
 
 export default function DocPreviewModal({ job, type, onClose }) {
   const componentRef = useRef(); // อ้างอิงส่วนที่จะพิมพ์
-  if (!job) return null;
-
   const isReceipt = type === 'RECEIPT';
+
+  // ✅ ฟังก์ชันพิมพ์แบบใหม่ (ใช้ react-to-print) - ต้องอยู่ก่อน early return ตาม Rules of Hooks
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef, // ใช้ contentRef แทน content
+    documentTitle: `${isReceipt ? 'Receipt' : 'Quotation'}_${job?.client || 'Doc'}`,
+    onAfterPrint: () => console.log('Print success'),
+  });
+
+  if (!job) return null;
 
   // --- Helper Functions ---
   const val = (n) => parseFloat(n) || 0;
@@ -23,14 +30,7 @@ export default function DocPreviewModal({ job, type, onClose }) {
   const receivedAmount = val(job.receivedAmount);
   
   // ยอดคงเหลือ = ยอดบิล (ตามที่คุณต้องการ)
-  const balance = totalPrice; 
-
-  // ✅ ฟังก์ชันพิมพ์แบบใหม่ (ใช้ react-to-print)
-  const handlePrint = useReactToPrint({
-    contentRef: componentRef, // ใช้ contentRef แทน content
-    documentTitle: `${isReceipt ? 'Receipt' : 'Quotation'}_${job.client}`,
-    onAfterPrint: () => console.log('Print success'),
-  });
+  const balance = totalPrice;
 
   const handleSaveImage = () => {
     if (window.html2canvas && componentRef.current) {

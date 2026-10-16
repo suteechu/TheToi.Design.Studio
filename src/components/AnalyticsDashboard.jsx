@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { Users, DollarSign, TrendingUp, Activity, Bitcoin, Coins } from 'lucide-react';
-
-
+import { DollarSign, TrendingUp, Bitcoin, Coins } from 'lucide-react';
 
 const formatCurrency = (amount, currency = 'THB') => {
   return new Intl.NumberFormat(currency === 'THB' ? 'th-TH' : 'en-US', { 
@@ -36,13 +34,13 @@ export default function AnalyticsDashboard({ stats }) {
   const [btcPrice, setBtcPrice] = useState(null);
   const [goldPriceUsd, setGoldPriceUsd] = useState(null);
 
-  useEffect(() => {
+  const handleTimeframeChange = (newVal) => {
+    setTimeframe(newVal);
     setIsLoading(true);
-    const timer = setTimeout(() => {
+    setTimeout(() => {
       setIsLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [timeframe]);
+    }, 400);
+  };
 
   useEffect(() => {
     const fetchCryptoPrices = () => {
@@ -78,7 +76,7 @@ export default function AnalyticsDashboard({ stats }) {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <select 
               value={timeframe}
-              onChange={(e) => setTimeframe(e.target.value)}
+              onChange={(e) => handleTimeframeChange(e.target.value)}
               className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold uppercase rounded-lg focus:ring-gold-500 focus:border-gold-500 block p-2.5 outline-none hover:border-gold-300 transition-colors cursor-pointer"
             >
               <option value="last_7_days">7 วันล่าสุด</option>

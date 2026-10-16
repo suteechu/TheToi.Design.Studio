@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, PenTool, User, Home, Calculator, CheckSquare, Square, Wallet } from 'lucide-react';
 
 export default function JobModal({ job, teams, projectTypes, serviceTypes, specs, onClose, onSave }) {
@@ -7,17 +7,17 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, specs
   const next14Days = new Date(); next14Days.setDate(next14Days.getDate() + 14);
   const next14DaysStr = next14Days.toISOString().split('T')[0];
 
-  const [formData, setFormData] = useState({
-    id: job?.id || `J${Math.floor(Math.random() * 1000000)}`,
+  const [formData, setFormData] = useState(() => ({
+    id: job?.id || `J${Date.now()}`,
     client: job?.client || '', projectType: job?.projectType || projectTypes[0], serviceType: job?.serviceType || serviceTypes[0], 
     teamId: job?.teamId || defaultTeamId,
-    area: job?.area || 0, unitPrice: job?.unitPrice || 0, totalPrice: job?.totalPrice || 0, 
+    area: job?.area || 0, unitPrice: job?.unitPrice || 0,
     feeEng: job?.feeEng || 0, feeArch: job?.feeArch || 0, feeSuper: job?.feeSuper || 0,
     receivedAmount: job?.receivedAmount || 0, actualOutsourceFee: job?.actualOutsourceFee || 0, note: job?.note || '',
     startDate: job?.startDate || todayStr, deliveryDate: job?.deliveryDate || next14DaysStr,
     bedrooms: job?.bedrooms || '', bathrooms: job?.bathrooms || '', parking: job?.parking || '',
     status: job?.status || 'IN_PROGRESS'
-  });
+  }));
 
   const handleTeamChange = (e) => {
       const newTeamId = e.target.value;
@@ -34,11 +34,10 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, specs
       setFormData(prev => ({ ...prev, bedrooms, bathrooms, parking }));
   };
 
-  useEffect(() => {
-    const area = parseFloat(formData.area) || 0; const price = parseFloat(formData.unitPrice) || 0;
-    const fees = (parseFloat(formData.feeEng)||0) + (parseFloat(formData.feeArch)||0) + (parseFloat(formData.feeSuper)||0);
-    setFormData(prev => ({ ...prev, totalPrice: (area * price) + fees }));
-  }, [formData.area, formData.unitPrice, formData.feeEng, formData.feeArch, formData.feeSuper]);
+  const area = parseFloat(formData.area) || 0;
+  const unitPrice = parseFloat(formData.unitPrice) || 0;
+  const fees = (parseFloat(formData.feeEng) || 0) + (parseFloat(formData.feeArch) || 0) + (parseFloat(formData.feeSuper) || 0);
+  const calculatedTotalPrice = (area * unitPrice) + fees;
 
   const toggleFee = (field) => setFormData(prev => ({ ...prev, [field]: prev[field] === 5000 ? 0 : 5000 }));
   const labelClass = "text-[10px] font-bold text-slate-500 uppercase mb-1 block tracking-wide";
@@ -51,7 +50,7 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, specs
           <div className="flex items-center gap-3"><div className="w-8 h-8 bg-[#C5A059]/10 rounded-lg flex items-center justify-center text-[#C5A059]"><PenTool size={16}/></div><div><h3 className="font-bold text-lg text-slate-800">จัดการโครงการ (Project)</h3></div></div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-black"><X size={18}/></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="flex-1 overflow-y-auto p-6 grid grid-cols-12 gap-6">
+        <form onSubmit={(e) => { e.preventDefault(); onSave({ ...formData, totalPrice: calculatedTotalPrice }); }} className="flex-1 overflow-y-auto p-6 grid grid-cols-12 gap-6">
           <div className="col-span-7 space-y-6">
              <div className="space-y-4">
                 <h4 className="text-xs font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide"><User size={14} className="text-[#C5A059]"/> ข้อมูลลูกค้า</h4>
@@ -91,7 +90,7 @@ export default function JobModal({ job, teams, projectTypes, serviceTypes, specs
                 </div>
                 <div className="pt-3 border-t border-dashed border-slate-200"><label className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Wallet size={10}/> ต้นทุนจริง (Cost)</label><input type="number" className="w-full p-2 bg-red-50/50 border border-transparent rounded-lg text-xs font-bold text-red-600 outline-none text-right" placeholder="0.00" value={formData.actualOutsourceFee} onChange={e => setFormData({...formData, actualOutsourceFee: parseFloat(e.target.value)||0})} /></div>
              </div>
-             <div className="bg-[#1A1A1A] p-6 rounded-xl text-center shadow-lg relative overflow-hidden"><p className="text-[9px] text-slate-400 font-bold uppercase mb-1 tracking-widest">มูลค่าสัญญา</p><p className="text-[#C5A059] text-3xl font-bold tracking-tight">฿{formData.totalPrice.toLocaleString()}</p></div>
+             <div className="bg-[#1A1A1A] p-6 rounded-xl text-center shadow-lg relative overflow-hidden"><p className="text-[9px] text-slate-400 font-bold uppercase mb-1 tracking-widest">มูลค่าสัญญา</p><p className="text-[#C5A059] text-3xl font-bold tracking-tight">฿{calculatedTotalPrice.toLocaleString()}</p></div>
              <div><label className={labelClass}>รับเงินแล้ว</label><input type="number" className={`${inputClass} font-bold text-emerald-600`} value={formData.receivedAmount} onChange={e => setFormData({...formData, receivedAmount: parseFloat(e.target.value)||0})} /></div>
              <button type="submit" className="w-full py-3 bg-black text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition-all uppercase tracking-widest text-xs">บันทึก (Save)</button>
           </div>

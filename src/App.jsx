@@ -289,12 +289,12 @@ export default function App() {
           if (!isNaN(d.getTime())) {
             const y = d.getFullYear(); const m = d.getMonth();
             if (y === 2024) profit2024 += profit;
-            if (y === 2025) { 
-              profit2025 += profit; 
-              monthlyDataRaw[m].profit += profit; 
+            if (y === 2025) profit2025 += profit;
+            if (y === 2026) {
+              profit2026 += profit;
+              monthlyDataRaw[m].profit += profit;
               monthlyDataRaw[m].revenue += price;
             }
-            if (y === 2026) profit2026 += profit;
           }
         } catch {
           /* ignore invalid date parse */
@@ -465,7 +465,7 @@ export default function App() {
             </div>
           )}
 
-          {currentView === 'analytics' && <AnalyticsDashboard stats={stats} />}
+          {currentView === 'analytics' && <AnalyticsDashboard stats={stats} jobs={jobs} />}
           {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={openDocSelect} />}
           {currentView === 'landConverter' && <LandConverterView />}
 

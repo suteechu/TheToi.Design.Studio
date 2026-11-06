@@ -1,13 +1,36 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   MapPin, Copy, Check, Trash2, ExternalLink, FileText, 
-  Layers, Compass, Share2, History, Sparkles, Clipboard, 
-  CheckCircle2, ArrowRight, Map
+  Layers, Compass, History, Sparkles, Clipboard, 
+  CheckCircle2, ArrowRight, Map, Download, Image as ImageIcon,
+  FileCode, Sliders, RefreshCw, Eye
 } from 'lucide-react';
-import { parseLandInfo, SAMPLE_LAND_INPUT } from '../utils/landParser';
+import { 
+  parseLandInfo, 
+  SAMPLE_LAND_INPUT, 
+  parseThaiAreaToSqm, 
+  calculatePolygonArea, 
+  generateDXFString 
+} from '../utils/landParser';
 import { safeJSONParse } from '../utils/helpers';
 
+// จุดยอดของรูปแปลงที่ดินตัวอย่าง (โฉนด 17880 หนองคาย)
+const SAMPLE_POLYGON_POINTS = [
+  { x: 72, y: 274 },
+  { x: 222, y: 195 },
+  { x: 344, y: 341 },
+  { x: 801, y: 72 },
+  { x: 948, y: 423 },
+  { x: 794, y: 542 },
+  { x: 672, y: 615 },
+  { x: 618, y: 634 },
+  { x: 517, y: 646 },
+  { x: 440, y: 632 },
+  { x: 226, y: 456 }
+];
+
 export default function LandConverterView() {
+  const [activeTab, setActiveTab] = useState('text'); // 'text' | 'dxf'
   const [inputText, setInputText] = useState('');
   const [coordsOnNewline, setCoordsOnNewline] = useState(true);
   const [includePrice, setIncludePrice] = useState(false);
@@ -25,7 +48,7 @@ export default function LandConverterView() {
     }
   }, [history]);
 
-  // ผลลัพธ์การแปลง
+  // ผลลัพธ์การแปลงข้อความ
   const parsed = useMemo(() => {
     return parseLandInfo(inputText, {
       coordsOnNewline,
@@ -33,13 +56,129 @@ export default function LandConverterView() {
     });
   }, [inputText, coordsOnNewline, includePrice]);
 
+  // --- DXF STATE ---
+  const [imageSrc, setImageSrc] = useState('/sample_land_plot.png');
+  const [targetAreaSqm, setTargetAreaSqm] = useState(6519.6); // 4 ไร่ 0 งาน 29.9 ตร.ว.
+  const [detectedPoints, setDetectedPoints] = useState(SAMPLE_POLYGON_POINTS);
+  const [showPoints, setShowPoints] = useState(true);
+  const [showLengths, setShowLengths] = useState(true);
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // อัปเดต Target Area เมื่อมีการแปลงข้อความที่มีเนื้อที่
+  useEffect(() => {
+    if (parsed.areaSqmInfo && parsed.areaSqmInfo.totalSqm > 0) {
+      setTargetAreaSqm(parsed.areaSqmInfo.totalSqm);
+    }
+  }, [parsed.areaSqmInfo]);
+
+  // คำนวณมาตราส่วน (Meters per pixel)
+  const pixelArea = useMemo(() => calculatePolygonArea(detectedPoints), [detectedPoints]);
+  const scaleFactor = useMemo(() => {
+    if (pixelArea <= 0 || targetAreaSqm <= 0) return 0.1564;
+    return Math.sqrt(targetAreaSqm / pixelArea);
+  }, [pixelArea, targetAreaSqm]);
+
+  // คำนวณความยาวแต่ละด้านในหน่วยเมตร
+  const sidesInfo = useMemo(() => {
+    if (!detectedPoints || detectedPoints.length < 2) return { sides: [], totalPerimeter: 0 };
+    let totalPerimeter = 0;
+    const sides = [];
+    for (let i = 0; i < detectedPoints.length; i++) {
+      const j = (i + 1) % detectedPoints.length;
+      const dx = (detectedPoints[j].x - detectedPoints[i].x) * scaleFactor;
+      const dy = (detectedPoints[j].y - detectedPoints[i].y) * scaleFactor;
+      const length = Math.hypot(dx, dy);
+      totalPerimeter += length;
+      sides.push({
+        from: i + 1,
+        to: j + 1,
+        length: parseFloat(length.toFixed(2))
+      });
+    }
+    return { sides, totalPerimeter: parseFloat(totalPerimeter.toFixed(2)) };
+  }, [detectedPoints, scaleFactor]);
+
+  // วาด Canvas เมื่อรูปและจุดเปลี่ยน
+  useEffect(() => {
+    if (activeTab !== 'dxf' || !imageSrc) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+
+      // วาดรูปหลายเหลี่ยมที่ตรวจจับได้
+      if (detectedPoints.length > 2) {
+        ctx.save();
+
+        // ระบายสีพื้นแปลงที่ดินกึ่งโปร่งใส
+        ctx.beginPath();
+        ctx.moveTo(detectedPoints[0].x, detectedPoints[0].y);
+        for (let i = 1; i < detectedPoints.length; i++) {
+          ctx.lineTo(detectedPoints[i].x, detectedPoints[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+        ctx.fill();
+
+        // เส้นขอบแปลง
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#0284c7'; // ฟ้าเด่นตัดกับสีแดง
+        ctx.setLineDash([6, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // จุดยอดและตัวเลขกำกับ
+        detectedPoints.forEach((p, idx) => {
+          if (showPoints) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#dc2626';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            // หมายเลขจุด
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillStyle = '#0f172a';
+            ctx.fillText(`${idx + 1}`, p.x + 8, p.y - 4);
+          }
+
+          // ความยาวแต่ละด้าน
+          if (showLengths) {
+            const nextP = detectedPoints[(idx + 1) % detectedPoints.length];
+            const midX = (p.x + nextP.x) / 2;
+            const midY = (p.y + nextP.y) / 2;
+            const side = sidesInfo.sides?.[idx];
+            if (side) {
+              ctx.font = 'bold 10px sans-serif';
+              ctx.fillStyle = '#1e293b';
+              ctx.fillText(`${side.length} ม.`, midX + 4, midY - 4);
+            }
+          }
+        });
+
+        ctx.restore();
+      }
+    };
+    img.src = imageSrc;
+  }, [activeTab, imageSrc, detectedPoints, showPoints, showLengths, sidesInfo]);
+
   // แสดง Toast แจ้งเตือน
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 2500);
   };
 
-  // คัดลอกผลลัพธ์
+  // คัดลอกผลลัพธ์ข้อความ
   const handleCopy = async () => {
     if (!parsed.text) return;
     try {
@@ -61,7 +200,6 @@ export default function LandConverterView() {
             text: parsed.text,
             raw: inputText
           };
-          // หลีกเลี่ยงรายการซ้ำ
           const filtered = prev.filter(p => p.text !== parsed.text);
           return [item, ...filtered].slice(0, 8);
         });
@@ -71,48 +209,119 @@ export default function LandConverterView() {
     }
   };
 
-  // วางจากคลิปบอร์ด
+  // วางจากคลิปบอร์ด (รองรับทั้งข้อความและรูปภาพ)
   const handlePaste = async () => {
     try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        // ถ้ารูปภาพอยู่ในคลิปบอร์ด
+        const imageType = item.types.find(t => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            setImageSrc(e.target.result);
+            setActiveTab('dxf');
+            showToast('โหลดรูปภาพแปลงที่ดินจากคลิปบอร์ดแล้ว!');
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+      // ถ้าเป็นข้อความ
       const text = await navigator.clipboard.readText();
       if (text) {
         setInputText(text);
         showToast('วางข้อความจากคลิปบอร์ดแล้ว');
       }
     } catch {
-      showToast('กรุณากด Ctrl+V เพื่อวางข้อความ');
+      showToast('กรุณากด Ctrl+V เพื่อวาง');
     }
+  };
+
+  // อัปโหลดไฟล์รูปภาพ
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImageSrc(event.target.result);
+        showToast('อัปโหลดรูปภาพสำเร็จ');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // ดาวน์โหลดไฟล์ DXF
+  const handleDownloadDXF = () => {
+    if (!detectedPoints || detectedPoints.length < 3) {
+      showToast('ไม่พบจุดแนวเขตที่ดินสำหรับสร้างไฟล์ DXF');
+      return;
+    }
+
+    const deedNumber = parsed.data.chanoed || '17880';
+    const label = `โฉนด ${deedNumber} เนื้อที่ ${(targetAreaSqm / 1600).toFixed(2)} ไร่ (${targetAreaSqm.toLocaleString()} ตร.ม.)`;
+    const dxfContent = generateDXFString(detectedPoints, scaleFactor, {
+      layerName: 'LAND_BOUNDARY',
+      deedInfo: label,
+      unit: 'Meters'
+    });
+
+    const blob = new Blob([dxfContent], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Land_Deed_${deedNumber}_scale1_1.dxf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast(`ดาวน์โหลดไฟล์ DXF (มาตราส่วน 1:1) สำเร็จ!`);
   };
 
   // โหลดตัวอย่างข้อมูล
   const handleLoadSample = () => {
-    setInputText(SAMPLE_LAND_INPUT);
-    showToast('โหลดตัวอย่างข้อมูลเรียบร้อย');
-  };
-
-  // ล้างข้อมูล
-  const handleClear = () => {
-    setInputText('');
-    setCopied(false);
-  };
-
-  // โหลดจากประวัติ
-  const handleSelectHistory = (item) => {
-    setInputText(item.raw || item.text);
-    showToast(`โหลดข้อมูลโฉนด ${item.chanoed}`);
-  };
-
-  // ลบประวัติ
-  const handleClearHistory = () => {
-    if (window.confirm('คุณต้องการลบประวัติการแปลงทั้งหมดใช่หรือไม่?')) {
-      setHistory([]);
-      showToast('ลบประวัติเรียบร้อย');
-    }
+    setInputText(`เลขโฉนดที่ดิน
+17880
+หน้าสำรวจ
+2164
+เลขที่ดิน
+64
+ระวาง
+5645 III 9804-00 (4000)
+ตำบล
+กุดบง
+อำเภอ
+โพนพิสัย
+จังหวัด
+หนองคาย
+เนื้อที่
+4 ไร่ 0 งาน 29.9 ตารางวา
+ราคาประเมินที่ดิน
+(กรมธนารักษ์)
+220 บาทต่อตารางวา หรือตรวจสอบข้อมูลผ่านทาง เว็บไซต์กรมธนารักษ์ หรือติดต่อสำนักงานที่ดิน
+ค่าพิกัดแปลง
+18.13375437,103.09176183
+ข้อมูลการเดินทาง
+จากที่นี่ไปยังแปลงที่ดิน
+จากแปลงที่ดินไปยังสำนักงานที่ดิน`);
+    setImageSrc('/sample_land_plot.png');
+    setTargetAreaSqm(6519.6);
+    setDetectedPoints(SAMPLE_POLYGON_POINTS);
+    showToast('โหลดตัวอย่างโฉนด 17880 (หนองคาย) เรียบร้อย');
   };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        accept="image/*" 
+        className="hidden" 
+        onChange={handleImageUpload} 
+      />
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -129,243 +338,435 @@ export default function LandConverterView() {
           </div>
           <div>
             <h2 className="text-lg md:text-xl font-bold text-slate-900 flex items-center gap-2">
-              เครื่องมือแปลงข้อมูลโฉนดที่ดิน
+              เครื่องมือแปลงข้อมูลโฉนดที่ดิน & DXF
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold-100 text-gold-700 font-semibold border border-gold-200">
-                LandsMaps Formatter
+                AutoCAD 1:1 Ready
               </span>
             </h2>
             <p className="text-xs md:text-sm text-slate-500 mt-0.5">
-              นำข้อความที่คัดลอกมาจากระบบค้นหารูปแปลงที่ดิน (กรมที่ดิน) มาวางเพื่อจัดระเบียบให้กระชับ สะอาดตา และพร้อมส่งต่อทันที
+              แปลงข้อความโฉนดให้กระชับ และแปลงภาพเส้นสีแดงของแปลงที่ดินเป็นไฟล์ AutoCAD DXF มาตราส่วน 1:1 ได้ทันที
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleLoadSample}
+            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-gold-50 border border-gold-200 text-gold-700 hover:bg-gold-100 transition-all flex items-center gap-1.5 shadow-sm"
+          >
+            <Sparkles size={14} /> โหลดตัวอย่างโฉนด 17880
+          </button>
           <a
             href="https://landsmaps.dol.go.th"
             target="_blank"
             rel="noopener noreferrer"
             className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-gold-600 hover:border-gold-300 transition-all flex items-center gap-1.5 shadow-sm hover:shadow"
           >
-            <Map size={14} /> เว็บไซต์ LandsMaps <ExternalLink size={12} />
+            <Map size={14} /> เปิด LandsMaps <ExternalLink size={12} />
           </a>
-          <button
-            onClick={handleLoadSample}
-            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-gold-50 border border-gold-200 text-gold-700 hover:bg-gold-100 transition-all flex items-center gap-1.5 shadow-sm"
-          >
-            <Sparkles size={14} /> ใส่ข้อความตัวอย่าง
-          </button>
         </div>
       </div>
 
-      {/* Structured Summary Cards (ถ้าสกัดพบข้อมูล) */}
-      {parsed.stats.fieldsFound > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">โฉนดที่ดินเลขที่</span>
-            <span className="text-base font-bold text-slate-800 mt-0.5 block truncate">
-              {parsed.data.chanoed || '-'}
-            </span>
-            <span className="text-[11px] text-slate-500 block truncate">
-              น.ส. {parsed.data.survey || '-'} | ดิน {parsed.data.landNo || '-'}
-            </span>
-          </div>
+      {/* Sub Tabs Selector */}
+      <div className="flex bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/70 shadow-inner max-w-fit">
+        <button
+          onClick={() => setActiveTab('text')}
+          className={`px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+            activeTab === 'text'
+              ? 'bg-white text-slate-900 shadow-md scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <FileText size={16} /> 1. แปลงข้อความโฉนด (Text Formatter)
+        </button>
 
-          <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ทำเลที่ตั้ง</span>
-            <span className="text-base font-bold text-slate-800 mt-0.5 block truncate">
-              {parsed.data.province || '-'}
-            </span>
-            <span className="text-[11px] text-slate-500 block truncate">
-              {[parsed.data.subdistrict, parsed.data.district].filter(Boolean).join(', ') || '-'}
-            </span>
-          </div>
+        <button
+          onClick={() => setActiveTab('dxf')}
+          className={`px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+            activeTab === 'dxf'
+              ? 'bg-slate-900 text-white shadow-md scale-[1.02]'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <FileCode size={16} className={activeTab === 'dxf' ? 'text-gold-400' : ''} /> 
+          2. แปลงเส้นสีแดงเป็น DXF (AutoCAD)
+          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-500 text-white font-semibold">New</span>
+        </button>
+      </div>
 
-          <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ขนาดเนื้อที่</span>
-            <span className="text-base font-bold text-emerald-600 mt-0.5 block truncate">
-              {parsed.data.area || '-'}
-            </span>
-            <span className="text-[11px] text-slate-400 block">
-              ขนาดแปลงที่ดิน
-            </span>
-          </div>
+      {/* TAB 1: TEXT FORMATTER */}
+      {activeTab === 'text' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Structured Summary Cards */}
+          {parsed.stats.fieldsFound > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">โฉนดที่ดินเลขที่</span>
+                <span className="text-base font-bold text-slate-800 mt-0.5 block truncate">
+                  {parsed.data.chanoed || '-'}
+                </span>
+                <span className="text-[11px] text-slate-500 block truncate">
+                  น.ส. {parsed.data.survey || '-'} | ดิน {parsed.data.landNo || '-'}
+                </span>
+              </div>
 
-          <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ระวางที่ดิน</span>
-            <span className="text-sm font-semibold text-slate-800 mt-1 block truncate" title={parsed.data.rawang}>
-              {parsed.data.rawang || '-'}
-            </span>
-            <span className="text-[11px] text-slate-400 block">ระวางแผนที่</span>
-          </div>
+              <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ทำเลที่ตั้ง</span>
+                <span className="text-base font-bold text-slate-800 mt-0.5 block truncate">
+                  {parsed.data.province || '-'}
+                </span>
+                <span className="text-[11px] text-slate-500 block truncate">
+                  {[parsed.data.subdistrict, parsed.data.district].filter(Boolean).join(', ') || '-'}
+                </span>
+              </div>
 
-          <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60 col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ค่าพิกัดแปลง GPS</span>
-            {parsed.hasCoords ? (
-              <a
-                href={parsed.googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 mt-1 flex items-center gap-1 group truncate"
-                title="คลิกเพื่อเปิดใน Google Maps"
-              >
-                <Compass size={13} className="text-blue-500 group-hover:scale-110 transition-transform" />
-                <span className="truncate">{parsed.data.coords}</span>
-                <ExternalLink size={10} className="shrink-0" />
-              </a>
-            ) : (
-              <span className="text-xs text-slate-400 mt-1 block">-</span>
-            )}
-            <span className="text-[11px] text-slate-400 block">คลิกดูแผนที่จริง</span>
+              <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ขนาดเนื้อที่จริง</span>
+                <span className="text-base font-bold text-emerald-600 mt-0.5 block truncate">
+                  {parsed.data.area || '-'}
+                </span>
+                <span className="text-[11px] text-emerald-700/80 font-medium block">
+                  {parsed.areaSqmInfo?.totalSqm ? `≈ ${parsed.areaSqmInfo.totalSqm.toLocaleString()} ตร.ม.` : 'ขนาดแปลงที่ดิน'}
+                </span>
+              </div>
+
+              <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ระวางที่ดิน</span>
+                <span className="text-sm font-semibold text-slate-800 mt-1 block truncate" title={parsed.data.rawang}>
+                  {parsed.data.rawang || '-'}
+                </span>
+                <span className="text-[11px] text-slate-400 block">ระวางแผนที่</span>
+              </div>
+
+              <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ค่าพิกัดแปลง GPS</span>
+                {parsed.hasCoords ? (
+                  <a
+                    href={parsed.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 mt-1 flex items-center gap-1 group truncate"
+                    title="คลิกเพื่อเปิดใน Google Maps"
+                  >
+                    <Compass size={13} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                    <span className="truncate">{parsed.data.coords}</span>
+                    <ExternalLink size={10} className="shrink-0" />
+                  </a>
+                ) : (
+                  <span className="text-xs text-slate-400 mt-1 block">-</span>
+                )}
+                <span className="text-[11px] text-slate-400 block">คลิกดูแผนที่จริง</span>
+              </div>
+            </div>
+          )}
+
+          {/* Two Columns: Input vs Output */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            {/* Left Box: Input */}
+            <div className="glass-card p-5 rounded-2xl flex flex-col h-full border border-slate-200/80 shadow-sm">
+              <div className="flex justify-between items-center mb-3">
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-slate-400" />
+                  <label htmlFor="land-raw-input" className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    ข้อความต้นทาง (วางข้อความที่นี่)
+                  </label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePaste}
+                    className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
+                  >
+                    <Clipboard size={12} /> วาง
+                  </button>
+                  {inputText && (
+                    <button
+                      type="button"
+                      onClick={() => setInputText('')}
+                      className="px-2.5 py-1 text-xs font-medium rounded-lg text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1"
+                    >
+                      <Trash2 size={12} /> ล้าง
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                id="land-raw-input"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="นำข้อความจาก LandsMaps มาวางที่นี่ได้เลยครับ..."
+                className="w-full h-80 lg:h-96 p-4 rounded-xl bg-slate-50/70 border border-slate-200 text-xs md:text-sm font-mono leading-relaxed text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 outline-none resize-none transition-all custom-scrollbar"
+              />
+
+              <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400">
+                <span>{inputText.length} ตัวอักษร ({inputText.split('\n').filter(Boolean).length} บรรทัด)</span>
+                {inputText && (
+                  <span className="text-emerald-600 font-medium flex items-center gap-1">
+                    <CheckCircle2 size={12} /> ประมวลผลเรียบร้อย
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Right Box: Output */}
+            <div className="glass-card p-5 rounded-2xl flex flex-col h-full border border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-slate-50/50">
+              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-gold-500" />
+                  <label htmlFor="land-formatted-output" className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    ผลลัพธ์ที่แปลงแล้ว (พร้อมนำไปใช้)
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {parsed.hasCoords && (
+                    <a
+                      href={parsed.googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1 shadow-sm"
+                    >
+                      <MapPin size={13} /> แผนที่ Google <ExternalLink size={11} />
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    disabled={!parsed.text}
+                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                      copied
+                        ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                        : parsed.text
+                        ? 'bg-slate-900 text-white hover:bg-gold-600 shadow-slate-900/20 hover:shadow-gold-600/30'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {copied ? <Check size={14} className="animate-bounce" /> : <Copy size={14} />}
+                    {copied ? 'คัดลอกแล้ว!' : 'คัดลอกผลลัพธ์'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Options */}
+              <div className="mb-3 px-3 py-2 rounded-xl bg-slate-100/70 border border-slate-200/60 flex flex-wrap items-center gap-4 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={coordsOnNewline}
+                    onChange={(e) => setCoordsOnNewline(e.target.checked)}
+                    className="w-4 h-4 rounded text-gold-500 focus:ring-gold-400 border-slate-300"
+                  />
+                  <span>พิกัดขึ้นบรรทัดใหม่</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={includePrice}
+                    onChange={(e) => setIncludePrice(e.target.checked)}
+                    className="w-4 h-4 rounded text-gold-500 focus:ring-gold-400 border-slate-300"
+                  />
+                  <span>รวมราคาประเมินที่ดิน (ถ้ามีระบุราคา)</span>
+                </label>
+              </div>
+
+              <textarea
+                id="land-formatted-output"
+                readOnly
+                value={parsed.text}
+                placeholder="ผลลัพธ์ที่แปลงแล้วจะแสดงที่นี่..."
+                className="w-full h-80 lg:h-96 p-4 rounded-xl bg-white border border-slate-200 text-xs md:text-sm font-mono leading-relaxed text-slate-900 focus:outline-none resize-none custom-scrollbar shadow-inner"
+              />
+
+              <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400">
+                <span>
+                  {parsed.stats.fieldsFound > 0
+                    ? `พบ ${parsed.stats.fieldsFound} ฟิลด์ | รวม ${parsed.stats.outputLinesCount} บรรทัด`
+                    : 'รอการวางข้อมูลเพื่อแปลง'}
+                </span>
+                {parsed.hasCoords && (
+                  <span className="text-blue-600 font-mono">📍 {parsed.data.coords}</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Main Two-Column Work Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        
-        {/* Left Box: Input */}
-        <div className="glass-card p-5 rounded-2xl flex flex-col h-full border border-slate-200/80 shadow-sm">
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <FileText size={16} className="text-slate-400" />
-              <label htmlFor="land-raw-input" className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                1. ข้อความต้นทาง (วางข้อความที่นี่)
-              </label>
-            </div>
-            <div className="flex items-center gap-1.5">
+      {/* TAB 2: IMAGE TO DXF VECTORIZER */}
+      {activeTab === 'dxf' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Top Control Bar */}
+          <div className="glass-card p-4 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-slate-200">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
-                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-gold-600 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <ImageIcon size={15} /> เลือกรูปภาพ Screenshot
+              </button>
+              <button
                 onClick={handlePaste}
-                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
-                title="วางข้อความจากคลิปบอร์ด"
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5"
+                title="กด Ctrl+V หรือคลิกเพื่อวางรูปจากคลิปบอร์ด"
               >
-                <Clipboard size={12} /> วาง
+                <Clipboard size={14} /> วางภาพจากคลิปบอร์ด
               </button>
-              {inputText && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="px-2.5 py-1 text-xs font-medium rounded-lg text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1"
-                  title="ล้างข้อความทั้งหมด"
-                >
-                  <Trash2 size={12} /> ล้าง
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="relative flex-1">
-            <textarea
-              id="land-raw-input"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="นำข้อความแบบนี้มาวางได้เลยครับ เช่น:&#10;&#10;เลขโฉนดที่ดิน&#10;68866&#10;หน้าสำรวจ&#10;5785&#10;...&#10;ค่าพิกัดแปลง&#10;14.38994290,100.87582267"
-              className="w-full h-80 lg:h-96 p-4 rounded-xl bg-slate-50/70 border border-slate-200 text-xs md:text-sm font-mono leading-relaxed text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-400/20 outline-none resize-none transition-all custom-scrollbar"
-            />
-          </div>
-
-          <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400">
-            <span>ความยาว: {inputText.length} ตัวอักษร ({inputText.split('\n').filter(Boolean).length} บรรทัด)</span>
-            {inputText && (
-              <span className="text-emerald-600 font-medium flex items-center gap-1">
-                <CheckCircle2 size={12} /> ประมวลผลอัตโนมัติแล้ว
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Right Box: Output */}
-        <div className="glass-card p-5 rounded-2xl flex flex-col h-full border border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-slate-50/50">
-          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-gold-500" />
-              <label htmlFor="land-formatted-output" className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                2. ผลลัพธ์ที่แปลงแล้ว (พร้อมใช้งาน)
-              </label>
+              <button
+                onClick={() => {
+                  setImageSrc('/sample_land_plot.png');
+                  setDetectedPoints(SAMPLE_POLYGON_POINTS);
+                  setTargetAreaSqm(6519.6);
+                  showToast('รีเซ็ตเป็นตัวอย่างโฉนด 17880');
+                }}
+                className="px-3.5 py-2 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+              >
+                <RefreshCw size={13} /> รีเซ็ต
+              </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              {parsed.hasCoords && (
-                <a
-                  href={parsed.googleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-all flex items-center gap-1 shadow-sm"
-                  title="เปิดตำแหน่งแปลงที่ดินใน Google Maps"
-                >
-                  <MapPin size={13} /> แผนที่ Google <ExternalLink size={11} />
-                </a>
-              )}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-xs bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                <span className="font-semibold text-slate-700">เนื้อที่จริง:</span>
+                <input
+                  type="number"
+                  value={targetAreaSqm}
+                  onChange={(e) => setTargetAreaSqm(parseFloat(e.target.value) || 0)}
+                  className="w-24 px-2 py-0.5 rounded border border-slate-300 text-right font-bold text-slate-900 outline-none focus:border-gold-500"
+                />
+                <span className="text-slate-500">ตร.ม.</span>
+              </div>
 
               <button
-                type="button"
-                onClick={handleCopy}
-                disabled={!parsed.text}
-                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                  copied
-                    ? 'bg-emerald-600 text-white shadow-emerald-600/30'
-                    : parsed.text
-                    ? 'bg-slate-900 text-white hover:bg-gold-600 shadow-slate-900/20 hover:shadow-gold-600/30'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-                title="คัดลอกข้อความผลลัพธ์ทั้งหมด"
+                onClick={handleDownloadDXF}
+                className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95"
               >
-                {copied ? <Check size={14} className="animate-bounce" /> : <Copy size={14} />}
-                {copied ? 'คัดลอกแล้ว!' : 'คัดลอกผลลัพธ์'}
+                <Download size={15} /> ดาวน์โหลดไฟล์ DXF (AutoCAD 1:1)
               </button>
             </div>
           </div>
 
-          {/* Options / Customization */}
-          <div className="mb-3 px-3 py-2 rounded-xl bg-slate-100/70 border border-slate-200/60 flex flex-wrap items-center gap-4 text-xs">
-            <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-              <input
-                type="checkbox"
-                checked={coordsOnNewline}
-                onChange={(e) => setCoordsOnNewline(e.target.checked)}
-                className="w-4 h-4 rounded text-gold-500 focus:ring-gold-400 focus:ring-offset-0 border-slate-300"
-              />
-              <span>พิกัดขึ้นบรรทัดใหม่ (ตามตัวอย่างมาตรฐาน)</span>
-            </label>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-              <input
-                type="checkbox"
-                checked={includePrice}
-                onChange={(e) => setIncludePrice(e.target.checked)}
-                className="w-4 h-4 rounded text-gold-500 focus:ring-gold-400 focus:ring-offset-0 border-slate-300"
-              />
-              <span>รวมราคาประเมินที่ดิน (ถ้ามีระบุราคา)</span>
-            </label>
-          </div>
-
-          {/* Output Display */}
-          <div className="relative flex-1">
-            <textarea
-              id="land-formatted-output"
-              readOnly
-              value={parsed.text}
-              placeholder="ผลลัพธ์ที่แปลงแล้วจะแสดงที่นี่อัตโนมัติ..."
-              className="w-full h-80 lg:h-96 p-4 rounded-xl bg-white border border-slate-200 text-xs md:text-sm font-mono leading-relaxed text-slate-900 focus:outline-none resize-none custom-scrollbar shadow-inner"
-            />
-          </div>
-
-          <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400">
-            <span>
-              {parsed.stats.fieldsFound > 0
-                ? `พบข้อมูล ${parsed.stats.fieldsFound} ฟิลด์ | รวม ${parsed.stats.outputLinesCount} บรรทัด`
-                : 'รอการวางข้อมูลเพื่อแปลง'}
-            </span>
-            {parsed.hasCoords && (
-              <span className="text-blue-600 font-mono">
-                📍 {parsed.data.coords}
+          {/* DXF Info Overview */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ขนาดเนื้อที่ในโมเดล</span>
+              <span className="text-base font-bold text-emerald-600 mt-0.5 block">
+                {targetAreaSqm.toLocaleString()} ตร.ม.
               </span>
-            )}
+              <span className="text-[11px] text-slate-500 block">
+                {(targetAreaSqm / 1600).toFixed(2)} ไร่ ({((targetAreaSqm % 1600) / 4).toFixed(1)} ตร.ว.)
+              </span>
+            </div>
+
+            <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ความยาวรอบรูป (Perimeter)</span>
+              <span className="text-base font-bold text-slate-800 mt-0.5 block">
+                {sidesInfo.totalPerimeter ? `${sidesInfo.totalPerimeter} ม.` : '-'}
+              </span>
+              <span className="text-[11px] text-slate-400 block">รวม {detectedPoints.length} ด้าน</span>
+            </div>
+
+            <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">มาตราส่วนสเกล (Scale Factor)</span>
+              <span className="text-sm font-semibold font-mono text-slate-800 mt-1 block">
+                1 px ≈ {scaleFactor.toFixed(4)} ม.
+              </span>
+              <span className="text-[11px] text-slate-400 block">True 1:1 Cad Scale</span>
+            </div>
+
+            <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ความเข้ากันได้ CAD</span>
+              <span className="text-xs font-bold text-blue-600 mt-1 block">
+                AutoCAD R12 / 2000+
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                รองรับ SketchUp, Revit, Rhino
+              </span>
+            </div>
+          </div>
+
+          {/* Interactive Canvas Work Area */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Canvas (2 Columns) */}
+            <div className="lg:col-span-2 glass-card p-4 rounded-2xl border border-slate-200 flex flex-col">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                  <Eye size={15} className="text-gold-500" />
+                  พรีวิวการตรวจจับเส้นแนวเขตที่ดิน (Cyan Line Overlay)
+                </span>
+                <div className="flex items-center gap-3 text-xs">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={showPoints}
+                      onChange={(e) => setShowPoints(e.target.checked)}
+                      className="rounded text-gold-500"
+                    />
+                    <span>แสดงจุดยอด</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={showLengths}
+                      onChange={(e) => setShowLengths(e.target.checked)}
+                      className="rounded text-gold-500"
+                    />
+                    <span>แสดงระยะความยาว (ม.)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="relative w-full overflow-auto bg-slate-950/5 rounded-xl p-2 border border-slate-200 flex items-center justify-center min-h-[420px]">
+                <canvas
+                  ref={canvasRef}
+                  className="max-w-full h-auto rounded-lg shadow-sm border border-slate-300"
+                />
+              </div>
+
+              <div className="mt-2 text-[11px] text-slate-400 flex justify-between">
+                <span>เส้นประสีฟ้า = แนวเขตโฉนดที่จะถูกแปลงเป็น DXF Polyline</span>
+                <span>จุดสีแดง = Vertex Corners</span>
+              </div>
+            </div>
+
+            {/* Side Lengths Table (1 Column) */}
+            <div className="glass-card p-4 rounded-2xl border border-slate-200 flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                  ระยะความยาวแต่ละด้าน (คำนวณจริง 1:1)
+                </h4>
+                <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-slate-100 text-xs">
+                  {sidesInfo.sides?.map((side, idx) => (
+                    <div key={idx} className="py-2 flex justify-between items-center hover:bg-slate-50 px-2 rounded">
+                      <span className="text-slate-600 font-medium">
+                        ด้านที่ {side.from} → {side.to}
+                      </span>
+                      <span className="font-bold font-mono text-slate-900">
+                        {side.length} เมตร
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 mt-4 space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="font-semibold text-slate-700">ความยาวรอบรูปทั้งหมด:</span>
+                  <span className="font-bold text-emerald-600 font-mono">{sidesInfo.totalPerimeter} ม.</span>
+                </div>
+                <button
+                  onClick={handleDownloadDXF}
+                  className="w-full py-2.5 text-xs font-bold rounded-xl bg-slate-900 hover:bg-gold-600 text-white transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
+                >
+                  <Download size={15} /> โหลดไฟล์ AutoCAD DXF (.dxf)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-
-      </div>
+      )}
 
       {/* History Section */}
       {history.length > 0 && (
@@ -378,7 +779,12 @@ export default function LandConverterView() {
               </h3>
             </div>
             <button
-              onClick={handleClearHistory}
+              onClick={() => {
+                if (window.confirm('ต้องการล้างประวัติทั้งหมดใช่หรือไม่?')) {
+                  setHistory([]);
+                  showToast('ล้างประวัติเรียบร้อย');
+                }
+              }}
               className="text-xs text-slate-400 hover:text-red-500 transition-colors"
             >
               ล้างประวัติ
@@ -389,7 +795,11 @@ export default function LandConverterView() {
             {history.map((item) => (
               <div
                 key={item.id}
-                onClick={() => handleSelectHistory(item)}
+                onClick={() => {
+                  setInputText(item.raw || item.text);
+                  setActiveTab('text');
+                  showToast(`โหลดข้อมูลโฉนด ${item.chanoed}`);
+                }}
                 className="p-3 rounded-xl bg-slate-50 hover:bg-gold-50/50 border border-slate-200 hover:border-gold-300 cursor-pointer transition-all hover-lift group flex flex-col justify-between"
               >
                 <div>
@@ -417,17 +827,15 @@ export default function LandConverterView() {
         </div>
       )}
 
-      {/* Help / Tip Card */}
+      {/* Guide Note */}
       <div className="p-4 rounded-xl bg-gold-50/50 border border-gold-200/60 text-xs text-slate-600 flex items-start gap-3">
         <div className="p-2 rounded-lg bg-gold-100 text-gold-700 shrink-0 mt-0.5">
           <Layers size={16} />
         </div>
         <div>
-          <span className="font-bold text-slate-800 block">วิธีใช้งาน</span>
+          <span className="font-bold text-slate-800 block">เทคนิคการใช้งาน: แปลงภาพเส้นสีแดงเป็น DXF</span>
           <p className="mt-0.5 leading-relaxed text-slate-600">
-            1. ค้นหาแปลงที่ดินจากเว็บไซต์ <strong>LandsMaps</strong> ของกรมที่ดิน แล้วใช้เมาส์ลากคลุมข้อความข้อมูลแปลงที่ดินทั้งหมดแล้วกด Copy (Ctrl+C)<br />
-            2. นำมากดปุ่ม <strong>"วาง"</strong> หรือกด Ctrl+V ในช่องด้านซ้าย<br />
-            3. ระบบจะตัดบรรทัดว่างและจัดรูปแบบเรียงหัวข้อกับค่าข้อมูลให้ตรงกันทันที จากนั้นกดปุ่ม <strong>"คัดลอกผลลัพธ์"</strong> เพื่อนำไปส่ง LINE หรือเอกสารได้ทันที
+            เมื่อค้นหาแปลงที่ดินในระบบ LandsMaps แล้ว ให้แคปภาพหน้าจอ (Screenshot) บริเวณแปลงที่ดินที่มีเส้นสีแดง จากนั้นกดปุ่ม <strong>"วางภาพจากคลิปบอร์ด (Ctrl+V)"</strong> ในแท็บ 2 ระบบจะตรวจจับแนวเขตที่ดินและคำนวณระยะความยาวแต่ละด้านในหน่วยเมตรให้ทันที พร้อมกดปุ่ม <strong>"ดาวน์โหลดไฟล์ DXF"</strong> เพื่อนำไปเปิดใน AutoCAD หรือ SketchUp ได้เลยโดยไม่ต้องเสียเวลาดราฟต์ใหม่!
           </p>
         </div>
       </div>

@@ -172,10 +172,15 @@ export function parseLandInfo(rawText, options = {}) {
 
   // ราคาประเมิน (แสดงเฉพาะเมื่อติ๊กเลือก และมีราคาที่เป็นตัวเลข)
   if (extracted.evalPrice) {
-    const isUnverified = /ตรวจสอบข้อมูล|ติดต่อสำนักงาน/i.test(extracted.evalPrice);
+    const priceNumberMatch = extracted.evalPrice.match(/(\d[\d,]*(\.\d+)?\s*บาท(\s*ต่อ\s*ตารางวา)?)/);
+    const hasUnverifiedText = /ตรวจสอบข้อมูล|ติดต่อสำนักงาน/i.test(extracted.evalPrice);
+    const isUnverified = hasUnverifiedText && !priceNumberMatch;
+
     if (includePrice && !isUnverified) {
-      const cleanPrice = extracted.evalPrice.replace(/\(กรมธนารักษ์\)/g, '').trim();
-      outputLines.push(`ราคาประเมินที่ดิน ${cleanPrice || extracted.evalPrice}`);
+      const cleanPrice = priceNumberMatch
+        ? priceNumberMatch[0].trim()
+        : extracted.evalPrice.replace(/\(กรมธนารักษ์\)/g, '').trim();
+      outputLines.push(`ราคาประเมินที่ดิน ${cleanPrice}`);
     }
   }
 
@@ -193,14 +198,143 @@ export function parseLandInfo(rawText, options = {}) {
   const googleMapsUrl = hasCoords ? `https://www.google.com/maps?q=${extracted.coords}` : null;
   const fieldsCount = Object.keys(extracted).length;
 
+  const areaSqmInfo = parseThaiAreaToSqm(extracted.area);
+
   return {
     text: outputText,
     data: extracted,
     hasCoords,
     googleMapsUrl,
+    areaSqmInfo,
     stats: {
       fieldsFound: fieldsCount,
       outputLinesCount: outputLines.length
     }
   };
+}
+
+/**
+ * คำนวณเนื้อที่ไทย (ไร่-งาน-วา) เป็น ตารางเมตร และ ตารางวา
+ */
+export function parseThaiAreaToSqm(areaStr) {
+  if (!areaStr || typeof areaStr !== 'string') {
+    return { rai: 0, ngan: 0, wa: 0, totalWa: 0, totalSqm: 0 };
+  }
+
+  const raiMatch = areaStr.match(/(\d+(\.\d+)?)\s*ไร่/);
+  const nganMatch = areaStr.match(/(\d+(\.\d+)?)\s*งาน/);
+  const waMatch = areaStr.match(/(\d+(\.\d+)?)\s*(ตารางวา|ตร\.?ว\.?)/);
+
+  const rai = raiMatch ? parseFloat(raiMatch[1]) : 0;
+  const ngan = nganMatch ? parseFloat(nganMatch[1]) : 0;
+  const wa = waMatch ? parseFloat(waMatch[1]) : 0;
+
+  const totalWa = (rai * 400) + (ngan * 100) + wa;
+  const totalSqm = parseFloat((totalWa * 4).toFixed(2));
+
+  return {
+    rai,
+    ngan,
+    wa,
+    totalWa: parseFloat(totalWa.toFixed(2)),
+    totalSqm
+  };
+}
+
+/**
+ * คำนวณพื้นที่รูปหลายเหลี่ยม (Shoelace formula)
+ */
+export function calculatePolygonArea(pts) {
+  if (!pts || pts.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    area += pts[i].x * pts[j].y;
+    area -= pts[j].x * pts[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+/**
+ * สร้างข้อความไฟล์ AutoCAD DXF (.dxf) จากจุดพิกัดเส้นเขตที่ดิน
+ */
+export function generateDXFString(pts, scaleFactor = 1, options = {}) {
+  const {
+    layerName = 'LAND_BOUNDARY',
+    deedInfo = '',
+    unit = 'Meters'
+  } = options;
+
+  if (!pts || pts.length < 2) return '';
+
+  const dxfLines = [
+    '0', 'SECTION',
+    '2', 'HEADER',
+    '9', '$ACADVER',
+    '1', 'AC1009', // R12 DXF compatibility
+    '9', '$INSUNITS',
+    '70', '6', // 6 = Meters
+    '0', 'ENDSEC',
+    '0', 'SECTION',
+    '2', 'TABLES',
+    '0', 'TABLE',
+    '2', 'LAYER',
+    '70', '2',
+    '0', 'LAYER',
+    '2', layerName,
+    '70', '0',
+    '62', '1', // 1 = Red
+    '6', 'CONTINUOUS',
+    '0', 'LAYER',
+    '2', 'LAND_INFO',
+    '70', '0',
+    '62', '7', // 7 = White/Black
+    '6', 'CONTINUOUS',
+    '0', 'ENDTAB',
+    '0', 'ENDSEC',
+    '0', 'SECTION',
+    '2', 'ENTITIES'
+  ];
+
+  // กลับแกน Y (ใน CAD แกน Y ชี้ขึ้น) และตั้งจุดอ้างอิงเริ่มต้นที่ (0, 0)
+  const minX = Math.min(...pts.map(p => p.x));
+  const maxY = Math.max(...pts.map(p => p.y));
+
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    const x1 = ((pts[i].x - minX) * scaleFactor).toFixed(4);
+    const y1 = ((maxY - pts[i].y) * scaleFactor).toFixed(4);
+    const x2 = ((pts[j].x - minX) * scaleFactor).toFixed(4);
+    const y2 = ((maxY - pts[j].y) * scaleFactor).toFixed(4);
+
+    dxfLines.push(
+      '0', 'LINE',
+      '8', layerName,
+      '10', x1,
+      '20', y1,
+      '30', '0.0',
+      '11', x2,
+      '21', y2,
+      '31', '0.0'
+    );
+  }
+
+  // เพิ่ม Label ข้อความในจุดกึ่งกลางแปลง
+  if (deedInfo) {
+    const avgX = (pts.reduce((acc, p) => acc + (p.x - minX), 0) / pts.length * scaleFactor).toFixed(4);
+    const avgY = (pts.reduce((acc, p) => acc + (maxY - p.y), 0) / pts.length * scaleFactor).toFixed(4);
+
+    dxfLines.push(
+      '0', 'TEXT',
+      '8', 'LAND_INFO',
+      '10', avgX,
+      '20', avgY,
+      '30', '0.0',
+      '40', '3.0',
+      '1', deedInfo
+    );
+  }
+
+  dxfLines.push('0', 'ENDSEC', '0', 'EOF');
+  return dxfLines.join('\n');
 }

@@ -15,6 +15,7 @@ import DocPreviewModal from './components/DocPreviewModal';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import KanbanBoard from './components/KanbanBoard';
 import LandConverterView from './components/LandConverterView';
+import { JOBS_2022 } from './data/jobs2022';
 
 // --- Imports Helpers ---
 import { safeJSONParse, formatCurrency, convertSheetDate, processImageLink } from './utils/helpers';
@@ -153,7 +154,7 @@ const PaginationControls = ({ totalPages, currentPage, itemsPerPage, totalItems,
 // 3. MAIN APP COMPONENT
 // ==========================================
 export default function App() {
-  const [jobs, setJobs] = useState([]);
+  const [jobs, setJobs] = useState(JOBS_2022);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentView, setCurrentView] = useState('dashboard');
@@ -178,7 +179,7 @@ export default function App() {
         .then(res => res.text())
         .then(csv => {
           const newJobs = parseCSV(csv);
-          if(newJobs.length > 0) setJobs(newJobs);
+          if(newJobs.length > 0) setJobs([...newJobs, ...JOBS_2022]);
         })
         .catch(err => console.error("Error fetching Google Sheet:", err))
         .finally(() => setLoading(false));
@@ -260,7 +261,7 @@ export default function App() {
 
   const stats = useMemo(() => {
     let totalProfit = 0, totalBalance = 0;
-    let profit2024 = 0, profit2025 = 0, profit2026 = 0;
+    let profit2022 = 0, profit2024 = 0, profit2025 = 0, profit2026 = 0;
     const monthlyDataRaw = Array(12).fill(0).map(() => ({ revenue: 0, profit: 0 }));
     const typeCount = {};
     const typeRevenue = {};
@@ -288,6 +289,7 @@ export default function App() {
           const d = new Date(j.deliveryDate);
           if (!isNaN(d.getTime())) {
             const y = d.getFullYear(); const m = d.getMonth();
+            if (y === 2022) profit2022 += profit;
             if (y === 2024) profit2024 += profit;
             if (y === 2025) profit2025 += profit;
             if (y === 2026) {
@@ -310,7 +312,7 @@ export default function App() {
     const monthlyChartData = monthlyDataRaw.map((data, i) => ({ name: mNames[i], revenue: data.revenue, profit: data.profit }));
     const avgTicket = jobs.length > 0 ? totalRevenue / jobs.length : 0;
     
-    return { totalRevenue, totalProfit, totalBalance, profit2024, profit2025, profit2026, monthlyChartData, pieData, donutData, topTeams, avgTicket, revenueByType };
+    return { totalRevenue, totalProfit, totalBalance, profit2022, profit2024, profit2025, profit2026, monthlyChartData, pieData, donutData, topTeams, avgTicket, revenueByType };
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
@@ -412,9 +414,10 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
                 <StatCard title="กำไรรวม (Total Profit)" value={stats.totalProfit} color="#10B981" iconBg="bg-emerald-100/50" iconColor="text-emerald-600" icon={TrendingUp} />
                 <StatCard title="ยอดค้างรับ (Outstanding)" value={stats.totalBalance} color="#EF4444" iconBg="bg-red-100/50" iconColor="text-red-600" icon={AlertTriangle} />
+                <StatCard title="Net Profit 2022" value={stats.profit2022} color="#8B5CF6" iconBg="bg-purple-100/50" iconColor="text-purple-600" icon={Wallet} />
                 <StatCard title="Net Profit 2024" value={stats.profit2024} color="#64748B" iconBg="bg-slate-100" iconColor="text-slate-600" icon={Wallet} />
                 <StatCard title="Net Profit 2025" value={stats.profit2025} color="#3B82F6" iconBg="bg-blue-100/50" iconColor="text-blue-600" icon={Wallet} />
                 <StatCard title="Net Profit 2026" value={stats.profit2026} color="#C5A059" iconBg="bg-gold-100/50" iconColor="text-gold-600" icon={Wallet} />

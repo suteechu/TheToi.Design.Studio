@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, LayoutDashboard, TrendingUp, Table as TableIcon, List,
   Clock, CheckCircle, AlertTriangle, Wallet, Edit3, RefreshCw, 
-  ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Columns
+  ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Columns, MapPin
 } from 'lucide-react';
 
 // --- Imports Components ---
@@ -14,6 +14,7 @@ import DocSelectModal from './components/DocSelectModal';
 import DocPreviewModal from './components/DocPreviewModal';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import KanbanBoard from './components/KanbanBoard';
+import LandConverterView from './components/LandConverterView';
 
 // --- Imports Helpers ---
 import { safeJSONParse, formatCurrency, convertSheetDate, processImageLink } from './utils/helpers';
@@ -370,10 +371,11 @@ export default function App() {
                 <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-semibold mt-0.5">Management System</p>
               </div>
             </div>
-            <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/60 shadow-inner">
-              <button onClick={() => setCurrentView('dashboard')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'dashboard' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><LayoutDashboard size={16}/> Dashboard</button>
-              <button onClick={() => setCurrentView('calendar')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'calendar' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><CalendarIcon size={16}/> Calendar</button>
-              <button onClick={() => setCurrentView('analytics')} className={`px-5 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 ${currentView === 'analytics' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><TrendingUp size={16}/> Analytics</button>
+            <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/60 shadow-inner overflow-x-auto max-w-full custom-scrollbar">
+              <button onClick={() => setCurrentView('dashboard')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${currentView === 'dashboard' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><LayoutDashboard size={16}/> Dashboard</button>
+              <button onClick={() => setCurrentView('calendar')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${currentView === 'calendar' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><CalendarIcon size={16}/> Calendar</button>
+              <button onClick={() => setCurrentView('analytics')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${currentView === 'analytics' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><TrendingUp size={16}/> Analytics</button>
+              <button onClick={() => setCurrentView('landConverter')} className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${currentView === 'landConverter' ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}><MapPin size={16}/> แปลงโฉนดที่ดิน</button>
             </div>
             <div className="flex gap-3 items-center">
               <a href="https://docs.google.com/spreadsheets/d/1-BbEaEcDijNyE1h-riqzXFL1rM8uR7b2/edit?gid=1035027015#gid=1035027015" target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:border-gold-300 text-slate-600 hover:text-gold-600 flex items-center gap-2 transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5" title="แก้ไขข้อมูลใน Google Sheets"><Edit3 size={16}/> <span className="text-xs font-bold hidden sm:inline">Edit Sheet</span></a>
@@ -465,6 +467,7 @@ export default function App() {
 
           {currentView === 'analytics' && <AnalyticsDashboard stats={stats} />}
           {currentView === 'calendar' && <CalendarView jobs={jobs} onJobClick={openDocSelect} />}
+          {currentView === 'landConverter' && <LandConverterView />}
 
         </div>
       </div>

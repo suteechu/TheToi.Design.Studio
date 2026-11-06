@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node --test",
     "preview": "vite preview",
     "predeploy_to_github": "npm run build",
     "deploy_to_github": "gh-pages -d dist --repo https://github.com/suteechu/TheToi.Design.Studio.git"

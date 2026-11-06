@@ -16,10 +16,8 @@ const ImageWithEdit = ({ src, onEdit }) => (
 );
 
 export default function JobRow({ job, displayImage, onDoc, onShare, onEditImage }) {
-  const pendingAmount = parseFloat(job.pendingAmount) || 0;
-  const receivedAmount = parseFloat(job.receivedAmount) || 0;
-  const balance = pendingAmount - receivedAmount;
-  const isPaid = balance <= 0.1;
+  const isPaid = job.isMoneyReceived === true || (parseFloat(job.pendingAmount) || 0) === 0;
+  const balance = isPaid ? 0 : (parseFloat(job.pendingAmount) || Math.max(0, (parseFloat(job.totalPrice) || 0) - (parseFloat(job.receivedAmount) || 0)));
   const totalPrice = parseFloat(job.totalPrice) || 0;
   const sheetProfit = parseFloat(job.sheetProfit) || 0;
   const marginPercent = totalPrice > 0 ? (sheetProfit / totalPrice) * 100 : 0;

@@ -79,13 +79,13 @@ const parseCSV = (text) => {
     const totalProfessionalFees = feeEng + feeArch + feeSuper;
 
     const actualOutsourceFee = pm(cleanCols[16]);
-    const pendingAmount      = pm(cleanCols[17]); 
     const receivedAmount     = pm(cleanCols[18]);
     const sheetProfit        = pm(cleanCols[19]);
     const isMoneyReceived    = (cleanCols[20] ?? '').toUpperCase() === 'TRUE';
 
     const calculatedTotal = designFee + totalProfessionalFees;
-    const totalPrice = calculatedTotal;
+    const totalPrice = pm(cleanCols[21]) || calculatedTotal;
+    const pendingAmount      = isMoneyReceived ? 0 : Math.max(0, totalPrice - receivedAmount);
 
     const startDate    = convertSheetDate(cleanCols[2]);
     const deliveryDate = convertSheetDate(cleanCols[3]);
@@ -194,7 +194,8 @@ export default function App() {
 
   const handleShare = (job) => {
     const teamName = job.teamName ?? '-';
-    const balance = (parseFloat(job.pendingAmount) || 0) - (parseFloat(job.receivedAmount) || 0);
+    const isPaid = job.isMoneyReceived === true || (parseFloat(job.pendingAmount) || 0) === 0;
+    const balance = isPaid ? 0 : (parseFloat(job.pendingAmount) || Math.max(0, (parseFloat(job.totalPrice) || 0) - (parseFloat(job.receivedAmount) || 0)));
     
     const designFee = parseFloat(job.designFee) || 0;
     const feeEng = parseFloat(job.feeEng) || 0;
@@ -273,7 +274,8 @@ export default function App() {
     jobs.forEach(j => {
       const price = parseFloat(j.totalPrice) || 0;
       const profit = parseFloat(j.sheetProfit) || 0;
-      const balance = (parseFloat(j.pendingAmount) || 0) - (parseFloat(j.receivedAmount) || 0);
+      const isPaid = j.isMoneyReceived === true || (parseFloat(j.pendingAmount) || 0) === 0;
+      const balance = isPaid ? 0 : (parseFloat(j.pendingAmount) || Math.max(0, price - (parseFloat(j.receivedAmount) || 0)));
       const cost = (parseFloat(j.actualOutsourceFee) || 0) + (parseFloat(j.totalProfessionalFees) || 0);
       
       totalRevenue += price;
@@ -324,7 +326,11 @@ export default function App() {
       if (filterStatus === 'ALL') return true;
       if (filterStatus === 'ACTIVE') return j.status !== 'FINISHED';
       if (filterStatus === 'FINISHED') return j.status === 'FINISHED';
-      if (filterStatus === 'UNPAID') return ((parseFloat(j.pendingAmount) || 0) - (parseFloat(j.receivedAmount) || 0)) > 0;
+      if (filterStatus === 'UNPAID') {
+        const isPaid = j.isMoneyReceived === true || (parseFloat(j.pendingAmount) || 0) === 0;
+        const balance = isPaid ? 0 : (parseFloat(j.pendingAmount) || Math.max(0, (parseFloat(j.totalPrice) || 0) - (parseFloat(j.receivedAmount) || 0)));
+        return balance > 0;
+      }
       return true;
     });
 
@@ -334,8 +340,10 @@ export default function App() {
         let bValue = b[sortConfig.key];
 
         if (sortConfig.key === 'balance') {
-          aValue = (parseFloat(a.pendingAmount) || 0) - (parseFloat(a.receivedAmount) || 0);
-          bValue = (parseFloat(b.pendingAmount) || 0) - (parseFloat(b.receivedAmount) || 0);
+          const aPaid = a.isMoneyReceived === true || (parseFloat(a.pendingAmount) || 0) === 0;
+          const bPaid = b.isMoneyReceived === true || (parseFloat(b.pendingAmount) || 0) === 0;
+          aValue = aPaid ? 0 : (parseFloat(a.pendingAmount) || Math.max(0, (parseFloat(a.totalPrice) || 0) - (parseFloat(a.receivedAmount) || 0)));
+          bValue = bPaid ? 0 : (parseFloat(b.pendingAmount) || Math.max(0, (parseFloat(b.totalPrice) || 0) - (parseFloat(b.receivedAmount) || 0)));
         } else if (['totalPrice', 'sheetProfit', 'receivedAmount', 'no'].includes(sortConfig.key)) {
           aValue = parseFloat(aValue) || 0;
           bValue = parseFloat(bValue) || 0;

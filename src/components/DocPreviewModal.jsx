@@ -71,9 +71,9 @@ export default function DocPreviewModal({ job, type, onClose }) {
             {/* --- Header --- */}
             <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
               <div className="flex gap-4">
-                <div className="w-16 h-16 bg-black flex items-center justify-center rounded-lg text-white text-2xl font-bold">S</div>
+                <div className="w-16 h-16 bg-black flex items-center justify-center rounded-lg text-white text-2xl font-bold">T</div>
                 <div>
-                  <h1 className="text-xl font-bold uppercase tracking-tight">SUTHEECHU DESIGN STUDIO</h1>
+                  <h1 className="text-xl font-bold tracking-tight">@TheToi.Design.Studio</h1>
                   <div className="text-[10px] text-slate-500 mt-1 font-medium">
                     <p>35/1 หมู่ 5 ต.ไผ่ต่ำ อ.หนองแค จ.สระบุรี 18140</p>
                     <p>Tel: (+66) 83 720 5937</p>

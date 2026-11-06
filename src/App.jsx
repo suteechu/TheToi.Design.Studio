@@ -218,7 +218,7 @@ export default function App() {
     }
 
     text += `------------------\n`;
-    text += `SUTHEECHU DESIGN STUDIO`;
+    text += `@TheToi.Design.Studio`;
 
     navigator.clipboard.writeText(text);
     alert('คัดลอกข้อความเรียบร้อย (พร้อมส่งไลน์)');
@@ -365,9 +365,9 @@ export default function App() {
           {/* Header & Nav */}
           <nav className="mb-8 glass-card p-4 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 sticky top-4 z-40 no-print transition-all duration-300">
             <div className="flex items-center gap-4 px-2 hover-lift">
-              <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl text-gold-400 font-bold text-2xl shadow-lg border border-slate-700">S</div>
+              <div className="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl text-gold-400 font-bold text-2xl shadow-lg border border-slate-700">T</div>
               <div>
-                <h1 className="text-xl font-bold uppercase tracking-tight text-slate-900">SUTHEECHU <span className="text-gold-500 font-light">DESIGN</span></h1>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">@TheToi<span className="text-gold-500 font-light">.Design.Studio</span></h1>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-semibold mt-0.5">Management System</p>
               </div>
             </div>

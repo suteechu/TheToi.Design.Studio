@@ -261,8 +261,7 @@ export function calculatePolygonArea(pts) {
 export function generateDXFString(pts, scaleFactor = 1, options = {}) {
   const {
     layerName = 'LAND_BOUNDARY',
-    deedInfo = '',
-    unit = 'Meters'
+    deedInfo = ''
   } = options;
 
   if (!pts || pts.length < 2) return '';

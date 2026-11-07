@@ -1,19 +1,19 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   MapPin, Copy, Check, Trash2, ExternalLink, FileText, 
   Layers, Compass, History, Sparkles, Clipboard, 
   CheckCircle2, ArrowRight, Map, Download, Image as ImageIcon,
-  FileCode, Sliders, RefreshCw, Eye, Undo2, Crosshair, AlertCircle
+  FileCode, RefreshCw, Eye, Undo2, Crosshair
 } from 'lucide-react';
 import { 
   parseLandInfo, 
-  SAMPLE_LAND_INPUT, 
-  parseThaiAreaToSqm, 
   calculatePolygonArea, 
   generateDXFString,
   detectRedBoundary
 } from '../utils/landParser';
 import { safeJSONParse } from '../utils/helpers';
+
+const SAMPLE_IMAGE_URL = `${import.meta.env.BASE_URL}sample_land_plot.png`;
 
 // จุดยอดของรูปแปลงที่ดินตัวอย่าง (โฉนด 17880 หนองคาย)
 const SAMPLE_POLYGON_POINTS = [
@@ -58,7 +58,7 @@ export default function LandConverterView() {
   }, [inputText, coordsOnNewline, includePrice]);
 
   // --- DXF STATE ---
-  const [imageSrc, setImageSrc] = useState('/sample_land_plot.png');
+  const [imageSrc, setImageSrc] = useState(SAMPLE_IMAGE_URL);
   const [targetAreaSqm, setTargetAreaSqm] = useState(6519.6); // 4 ไร่ 0 งาน 29.9 ตร.ว.
   const [detectedPoints, setDetectedPoints] = useState(SAMPLE_POLYGON_POINTS);
   const [showPoints, setShowPoints] = useState(true);
@@ -200,9 +200,40 @@ export default function LandConverterView() {
   }, [activeTab, imageSrc, detectedPoints, showPoints, showLengths, sidesInfo, hoveredPointIdx, draggingIdx]);
 
   // แสดง Toast แจ้งเตือน
-  const showToast = (msg) => {
+  const showToast = useCallback((msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
+  }, []);
+
+  // คัดลอกผลลัพธ์ข้อความ
+  const handleCopy = async () => {
+    if (!parsed.text) return;
+    try {
+      await navigator.clipboard.writeText(parsed.text);
+      setCopied(true);
+      showToast('คัดลอกข้อความสำเร็จแล้ว!');
+      setTimeout(() => setCopied(false), 2000);
+
+      // บันทึกลงประวัติถ้ามีเลขโฉนดหรือพิกัด
+      if (parsed.data.chanoed || parsed.data.coords) {
+        setHistory(prev => {
+          const item = {
+            id: Date.now(),
+            date: new Date().toLocaleDateString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+            chanoed: parsed.data.chanoed || 'ไม่ระบุโฉนด',
+            location: [parsed.data.subdistrict, parsed.data.district, parsed.data.province].filter(Boolean).join(' ') || '-',
+            area: parsed.data.area || '-',
+            coords: parsed.data.coords || null,
+            text: parsed.text,
+            raw: inputText
+          };
+          const filtered = prev.filter(p => p.text !== parsed.text);
+          return [item, ...filtered].slice(0, 8);
+        });
+      }
+    } catch {
+      showToast('ไม่สามารถเข้าถึงคลิปบอร์ดได้ กรุณาลองใหม่อีกครั้ง');
+    }
   };
 
   // แปลงพิกัด Client จากเมาส์เป็นพิกัดจริงบน Canvas
@@ -329,7 +360,7 @@ export default function LandConverterView() {
   };
 
   // โหลดรูปภาพใหม่และตรวจจับอัตโนมัติ
-  const loadNewImage = (srcUrl, sourceName = 'ภาพใหม่') => {
+  const loadNewImage = useCallback((srcUrl, sourceName = 'ภาพใหม่') => {
     setImageSrc(srcUrl);
     setDetectedPoints([]); // ล้างจุดชุดเก่าออกทันที 100%!
     setActiveTab('dxf');
@@ -356,7 +387,7 @@ export default function LandConverterView() {
       }
     };
     tempImg.src = srcUrl;
-  };
+  }, [showToast]);
 
   // ดักจับการกดปุ่ม Ctrl+V (Paste) จากทั่วทั้งหน้าต่าง
   useEffect(() => {
@@ -386,7 +417,7 @@ export default function LandConverterView() {
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, []);
+  }, [loadNewImage]);
 
   // วางจากคลิปบอร์ด (ปุ่มกด)
   const handlePaste = async () => {
@@ -480,7 +511,7 @@ export default function LandConverterView() {
 ข้อมูลการเดินทาง
 จากที่นี่ไปยังแปลงที่ดิน
 จากแปลงที่ดินไปยังสำนักงานที่ดิน`);
-    setImageSrc('/sample_land_plot.png');
+    setImageSrc(SAMPLE_IMAGE_URL);
     setTargetAreaSqm(6519.6);
     setDetectedPoints(SAMPLE_POLYGON_POINTS);
     showToast('โหลดตัวอย่างโฉนด 17880 (หนองคาย) เรียบร้อย');
@@ -823,7 +854,7 @@ export default function LandConverterView() {
               </button>
               <button
                 onClick={() => {
-                  setImageSrc('/sample_land_plot.png');
+                  setImageSrc(SAMPLE_IMAGE_URL);
                   setDetectedPoints(SAMPLE_POLYGON_POINTS);
                   setTargetAreaSqm(6519.6);
                   showToast('รีเซ็ตเป็นตัวอย่างโฉนด 17880');

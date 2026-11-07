@@ -15,6 +15,7 @@ import DocPreviewModal from './components/DocPreviewModal';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import KanbanBoard from './components/KanbanBoard';
 import LandConverterView from './components/LandConverterView';
+import OutstandingModal from './components/OutstandingModal';
 
 // --- Imports Helpers ---
 import { safeJSONParse, formatCurrency, convertSheetDate, processImageLink } from './utils/helpers';
@@ -189,6 +190,7 @@ export default function App() {
 
   const [activeModal, setActiveModal] = useState(null);
   const [docConfig, setDocConfig] = useState(null);
+  const [showOutstandingModal, setShowOutstandingModal] = useState(false);
 
   const handleShare = (job) => {
     const teamName = job.teamName ?? '-';
@@ -422,7 +424,7 @@ export default function App() {
 
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
                 <StatCard title="กำไรรวม (Total Profit)" value={stats.totalProfit} color="#10B981" iconBg="bg-emerald-100/50" iconColor="text-emerald-600" icon={TrendingUp} />
-                <StatCard title="ยอดค้างรับ (Outstanding)" value={stats.totalBalance} color="#EF4444" iconBg="bg-red-100/50" iconColor="text-red-600" icon={AlertTriangle} />
+                <StatCard title="ยอดค้างรับ (Outstanding)" value={stats.totalBalance} color="#EF4444" iconBg="bg-red-100/50" iconColor="text-red-600" icon={AlertTriangle} onClick={() => setShowOutstandingModal(true)} badge="คลิกดู" />
                 <StatCard title="Net Profit 2024" value={stats.profit2024} color="#64748B" iconBg="bg-slate-100" iconColor="text-slate-600" icon={Wallet} />
                 <StatCard title="Net Profit 2025" value={stats.profit2025} color="#3B82F6" iconBg="bg-blue-100/50" iconColor="text-blue-600" icon={Wallet} />
                 <StatCard title="Net Profit 2026" value={stats.profit2026} color="#C5A059" iconBg="bg-gold-100/50" iconColor="text-gold-600" icon={Wallet} />
@@ -482,6 +484,14 @@ export default function App() {
 
       {activeModal === 'docSelect' && <DocSelectModal onClose={() => setActiveModal(null)} onSelect={(type) => { setDocConfig({ ...docConfig, type }); setActiveModal('docPreview'); }} />}
       {activeModal === 'docPreview' && docConfig && <DocPreviewModal job={jobs.find(j => j.id === docConfig.jobId)} type={docConfig.type} onClose={() => setActiveModal(null)} />}
+      {showOutstandingModal && (
+        <OutstandingModal 
+          jobs={jobs} 
+          onClose={() => setShowOutstandingModal(false)} 
+          onDoc={openDocSelect} 
+          onShare={handleShare} 
+        />
+      )}
     </>
   );
 }

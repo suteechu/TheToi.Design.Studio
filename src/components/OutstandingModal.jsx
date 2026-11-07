@@ -198,15 +198,21 @@ export default function OutstandingModal({ jobs, onClose, onDoc, onShare }) {
                     {/* Actions */}
                     <div className="flex items-center gap-1.5 pl-2">
                       <button
-                        onClick={() => onDoc(job)}
-                        className="p-2 bg-slate-50 hover:bg-gold-50 border border-slate-200 hover:border-gold-300 text-slate-600 hover:text-gold-700 rounded-xl transition-all shadow-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDoc(job);
+                        }}
+                        className="p-2 bg-slate-50 hover:bg-gold-50 border border-slate-200 hover:border-gold-300 text-slate-600 hover:text-gold-700 rounded-xl transition-all shadow-sm cursor-pointer"
                         title="ออกเอกสาร / ใบเสนอราคา / ใบเสร็จ"
                       >
                         <FileText size={16} />
                       </button>
                       <button
-                        onClick={() => onShare(job)}
-                        className="p-2 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onShare(job);
+                        }}
+                        className="p-2 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-600 hover:text-emerald-700 rounded-xl transition-all shadow-sm cursor-pointer"
                         title="คัดลอกข้อความสรุปส่ง LINE"
                       >
                         <Share2 size={16} />

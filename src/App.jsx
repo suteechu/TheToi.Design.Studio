@@ -482,14 +482,25 @@ export default function App() {
         </div>
       </div>
 
-      {activeModal === 'docSelect' && <DocSelectModal onClose={() => setActiveModal(null)} onSelect={(type) => { setDocConfig({ ...docConfig, type }); setActiveModal('docPreview'); }} />}
-      {activeModal === 'docPreview' && docConfig && <DocPreviewModal job={jobs.find(j => j.id === docConfig.jobId)} type={docConfig.type} onClose={() => setActiveModal(null)} />}
       {showOutstandingModal && (
         <OutstandingModal 
           jobs={jobs} 
           onClose={() => setShowOutstandingModal(false)} 
           onDoc={openDocSelect} 
           onShare={handleShare} 
+        />
+      )}
+      {activeModal === 'docSelect' && (
+        <DocSelectModal 
+          onClose={() => setActiveModal(null)} 
+          onSelect={(type) => { setDocConfig({ ...docConfig, type }); setActiveModal('docPreview'); }} 
+        />
+      )}
+      {activeModal === 'docPreview' && docConfig && (
+        <DocPreviewModal 
+          job={jobs.find(j => j.id === docConfig.jobId)} 
+          type={docConfig.type} 
+          onClose={() => setActiveModal(null)} 
         />
       )}
     </>

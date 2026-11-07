@@ -46,9 +46,9 @@ export default function DocPreviewModal({ job, type, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[90] flex items-start justify-center p-4 overflow-y-auto">
       {/* ปุ่มปิด (ไม่ถูกพิมพ์) */}
-      <button onClick={onClose} className="fixed top-4 right-4 z-[80] p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-sm transition-all shadow-lg cursor-pointer">
+      <button onClick={onClose} className="fixed top-4 right-4 z-[100] p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-sm transition-all shadow-lg cursor-pointer">
         <X size={24} />
       </button>
 

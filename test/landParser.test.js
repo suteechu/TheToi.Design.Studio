@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLandInfo, SAMPLE_LAND_INPUT, generateDXFString } from '../src/utils/landParser.js';
+import { 
+  parseLandInfo, 
+  SAMPLE_LAND_INPUT, 
+  generateDXFString,
+  convexHull,
+  douglasPeucker,
+  detectRedBoundary
+} from '../src/utils/landParser.js';
 
 test('1. แปลงข้อมูลตรงตามตัวอย่างที่ผู้ใช้กำหนด 100%', () => {
   const input = `เลขโฉนดที่ดิน
@@ -186,4 +193,46 @@ test('8. ทดสอบการสร้างไฟล์ AutoCAD DXF', () =>
   assert.ok(dxf.includes('LAND_BOUNDARY'));
   assert.ok(dxf.includes('LINE'));
   assert.ok(dxf.includes('EOF'));
+});
+
+test('9. ทดสอบอัลกอริทึม Convex Hull และ Douglas-Peucker', () => {
+  const points = [
+    { x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 },
+    { x: 10, y: 5 }, { x: 10, y: 10 },
+    { x: 5, y: 10 }, { x: 0, y: 10 },
+    { x: 5, y: 5 } // จุดข้างใน
+  ];
+  const hull = convexHull(points);
+  assert.ok(hull.length >= 4);
+
+  const simplified = douglasPeucker([...hull, hull[0]], 1);
+  assert.ok(simplified.length >= 4);
+});
+
+test('10. ทดสอบฟังก์ชันตรวจจับแนวเขตสีแดง detectRedBoundary', () => {
+  const width = 200;
+  const height = 200;
+  const data = new Uint8ClampedArray(width * height * 4);
+
+  // วาดสี่เหลี่ยมสีแดง
+  function drawLine(x0, y0, x1, y1) {
+    const steps = Math.hypot(x1 - x0, y1 - y0);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = Math.round(x0 + (x1 - x0) * t);
+      const y = Math.round(y0 + (y1 - y0) * t);
+      const idx = (y * width + x) * 4;
+      data[idx] = 250;
+      data[idx + 1] = 20;
+      data[idx + 2] = 20;
+      data[idx + 3] = 255;
+    }
+  }
+  drawLine(30, 30, 170, 30);
+  drawLine(170, 30, 170, 170);
+  drawLine(170, 170, 30, 170);
+  drawLine(30, 170, 30, 30);
+
+  const detected = detectRedBoundary({ data, width, height });
+  assert.ok(detected.length >= 4);
 });

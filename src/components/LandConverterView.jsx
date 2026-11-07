@@ -3,14 +3,15 @@ import {
   MapPin, Copy, Check, Trash2, ExternalLink, FileText, 
   Layers, Compass, History, Sparkles, Clipboard, 
   CheckCircle2, ArrowRight, Map, Download, Image as ImageIcon,
-  FileCode, Sliders, RefreshCw, Eye
+  FileCode, Sliders, RefreshCw, Eye, Undo2, Crosshair, AlertCircle
 } from 'lucide-react';
 import { 
   parseLandInfo, 
   SAMPLE_LAND_INPUT, 
   parseThaiAreaToSqm, 
   calculatePolygonArea, 
-  generateDXFString 
+  generateDXFString,
+  detectRedBoundary
 } from '../utils/landParser';
 import { safeJSONParse } from '../utils/helpers';
 
@@ -62,6 +63,9 @@ export default function LandConverterView() {
   const [detectedPoints, setDetectedPoints] = useState(SAMPLE_POLYGON_POINTS);
   const [showPoints, setShowPoints] = useState(true);
   const [showLengths, setShowLengths] = useState(true);
+  const [hoveredPointIdx, setHoveredPointIdx] = useState(null);
+  const [draggingIdx, setDraggingIdx] = useState(null);
+  const [isDetecting, setIsDetecting] = useState(false);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -84,7 +88,10 @@ export default function LandConverterView() {
     if (!detectedPoints || detectedPoints.length < 2) return { sides: [], totalPerimeter: 0 };
     let totalPerimeter = 0;
     const sides = [];
-    for (let i = 0; i < detectedPoints.length; i++) {
+    const isClosed = detectedPoints.length >= 3;
+    const sideCount = isClosed ? detectedPoints.length : detectedPoints.length - 1;
+
+    for (let i = 0; i < sideCount; i++) {
       const j = (i + 1) % detectedPoints.length;
       const dx = (detectedPoints[j].x - detectedPoints[i].x) * scaleFactor;
       const dy = (detectedPoints[j].y - detectedPoints[i].y) * scaleFactor;
@@ -115,53 +122,73 @@ export default function LandConverterView() {
       ctx.drawImage(img, 0, 0);
 
       // วาดรูปหลายเหลี่ยมที่ตรวจจับได้
-      if (detectedPoints.length > 2) {
+      if (detectedPoints.length > 0) {
         ctx.save();
 
-        // ระบายสีพื้นแปลงที่ดินกึ่งโปร่งใส
-        ctx.beginPath();
-        ctx.moveTo(detectedPoints[0].x, detectedPoints[0].y);
-        for (let i = 1; i < detectedPoints.length; i++) {
-          ctx.lineTo(detectedPoints[i].x, detectedPoints[i].y);
+        if (detectedPoints.length > 2) {
+          // ระบายสีพื้นแปลงที่ดินกึ่งโปร่งใส
+          ctx.beginPath();
+          ctx.moveTo(detectedPoints[0].x, detectedPoints[0].y);
+          for (let i = 1; i < detectedPoints.length; i++) {
+            ctx.lineTo(detectedPoints[i].x, detectedPoints[i].y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
+          ctx.fill();
+
+          // เส้นขอบแปลง
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#0284c7'; // ฟ้าเด่นตัดกับสีแดง
+          ctx.setLineDash([6, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (detectedPoints.length === 2) {
+          ctx.beginPath();
+          ctx.moveTo(detectedPoints[0].x, detectedPoints[0].y);
+          ctx.lineTo(detectedPoints[1].x, detectedPoints[1].y);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#0284c7';
+          ctx.setLineDash([6, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
-        ctx.fill();
 
-        // เส้นขอบแปลง
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#0284c7'; // ฟ้าเด่นตัดกับสีแดง
-        ctx.setLineDash([6, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // จุดยอดและตัวเลขกำกับ
+        // วาดจุดยอดและตัวเลขกำกับ
         detectedPoints.forEach((p, idx) => {
+          const isSelected = hoveredPointIdx === idx || draggingIdx === idx;
           if (showPoints) {
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-            ctx.fillStyle = '#dc2626';
+            ctx.arc(p.x, p.y, isSelected ? 8 : 6, 0, Math.PI * 2);
+            ctx.fillStyle = isSelected ? '#f59e0b' : '#dc2626';
             ctx.fill();
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2.5;
             ctx.strokeStyle = '#ffffff';
             ctx.stroke();
 
             // หมายเลขจุด
-            ctx.font = 'bold 11px sans-serif';
+            ctx.font = 'bold 12px sans-serif';
             ctx.fillStyle = '#0f172a';
-            ctx.fillText(`${idx + 1}`, p.x + 8, p.y - 4);
+            ctx.fillText(`${idx + 1}`, p.x + 9, p.y - 5);
           }
 
           // ความยาวแต่ละด้าน
-          if (showLengths) {
-            const nextP = detectedPoints[(idx + 1) % detectedPoints.length];
-            const midX = (p.x + nextP.x) / 2;
-            const midY = (p.y + nextP.y) / 2;
-            const side = sidesInfo.sides?.[idx];
-            if (side) {
-              ctx.font = 'bold 10px sans-serif';
-              ctx.fillStyle = '#1e293b';
-              ctx.fillText(`${side.length} ม.`, midX + 4, midY - 4);
+          if (showLengths && detectedPoints.length >= 2) {
+            const nextIdx = (idx + 1) % detectedPoints.length;
+            if (detectedPoints.length > 2 || idx === 0) {
+              const nextP = detectedPoints[nextIdx];
+              const midX = (p.x + nextP.x) / 2;
+              const midY = (p.y + nextP.y) / 2;
+              const side = sidesInfo.sides?.[idx];
+              if (side) {
+                ctx.save();
+                ctx.font = 'bold 11px sans-serif';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.strokeText(`${side.length} ม.`, midX + 5, midY - 5);
+                ctx.fillStyle = '#0f172a';
+                ctx.fillText(`${side.length} ม.`, midX + 5, midY - 5);
+                ctx.restore();
+              }
             }
           }
         });
@@ -170,65 +197,213 @@ export default function LandConverterView() {
       }
     };
     img.src = imageSrc;
-  }, [activeTab, imageSrc, detectedPoints, showPoints, showLengths, sidesInfo]);
+  }, [activeTab, imageSrc, detectedPoints, showPoints, showLengths, sidesInfo, hoveredPointIdx, draggingIdx]);
 
   // แสดง Toast แจ้งเตือน
   const showToast = (msg) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 2500);
+    setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // คัดลอกผลลัพธ์ข้อความ
-  const handleCopy = async () => {
-    if (!parsed.text) return;
-    try {
-      await navigator.clipboard.writeText(parsed.text);
-      setCopied(true);
-      showToast('คัดลอกข้อความสำเร็จแล้ว!');
-      setTimeout(() => setCopied(false), 2000);
+  // แปลงพิกัด Client จากเมาส์เป็นพิกัดจริงบน Canvas
+  const getCanvasCoords = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: Math.round((e.clientX - rect.left) * scaleX),
+      y: Math.round((e.clientY - rect.top) * scaleY)
+    };
+  };
 
-      // บันทึกลงประวัติถ้ามีเลขโฉนดหรือพิกัด
-      if (parsed.data.chanoed || parsed.data.coords) {
-        setHistory(prev => {
-          const item = {
-            id: Date.now(),
-            date: new Date().toLocaleDateString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-            chanoed: parsed.data.chanoed || 'ไม่ระบุโฉนด',
-            location: [parsed.data.subdistrict, parsed.data.district, parsed.data.province].filter(Boolean).join(' ') || '-',
-            area: parsed.data.area || '-',
-            coords: parsed.data.coords || null,
-            text: parsed.text,
-            raw: inputText
-          };
-          const filtered = prev.filter(p => p.text !== parsed.text);
-          return [item, ...filtered].slice(0, 8);
-        });
-      }
-    } catch {
-      showToast('ไม่สามารถเข้าถึงคลิปบอร์ดได้ กรุณาลองใหม่อีกครั้ง');
+  // ค้นหาจุดยอดที่ใกล้เคอร์เซอร์
+  const findPointIndexNear = (coords, radius = 20) => {
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const scale = rect ? (canvas.width / rect.width) : 1;
+    const threshold = radius * scale;
+
+    for (let i = 0; i < detectedPoints.length; i++) {
+      const p = detectedPoints[i];
+      const dist = Math.hypot(p.x - coords.x, p.y - coords.y);
+      if (dist <= threshold) return i;
+    }
+    return -1;
+  };
+
+  // ปักหมุด หรือเริ่มลากจุดยอดบน Canvas
+  const handleCanvasMouseDown = (e) => {
+    if (e.button !== 0) return; // เฉพาะคลิกซ้าย
+    const coords = getCanvasCoords(e);
+    const nearIdx = findPointIndexNear(coords);
+    if (nearIdx !== -1) {
+      setDraggingIdx(nearIdx);
+    } else {
+      setDetectedPoints(prev => [...prev, coords]);
     }
   };
 
-  // วางจากคลิปบอร์ด (รองรับทั้งข้อความและรูปภาพ)
+  // เลื่อนเมาส์บน Canvas (ลากจุด หรือเปลี่ยน Cursor Hover)
+  const handleCanvasMouseMove = (e) => {
+    const coords = getCanvasCoords(e);
+    if (draggingIdx !== null && draggingIdx >= 0) {
+      setDetectedPoints(prev => {
+        const next = [...prev];
+        next[draggingIdx] = coords;
+        return next;
+      });
+    } else {
+      const nearIdx = findPointIndexNear(coords);
+      setHoveredPointIdx(nearIdx !== -1 ? nearIdx : null);
+    }
+  };
+
+  // จบการลากจุด
+  const handleCanvasMouseUp = () => {
+    setDraggingIdx(null);
+  };
+
+  // ดับเบิลคลิกเพื่อลบจุดยอด
+  const handleCanvasDoubleClick = (e) => {
+    const coords = getCanvasCoords(e);
+    const nearIdx = findPointIndexNear(coords);
+    if (nearIdx !== -1) {
+      setDetectedPoints(prev => prev.filter((_, idx) => idx !== nearIdx));
+      showToast(`ลบจุดที่ ${nearIdx + 1} แล้ว`);
+    }
+  };
+
+  // คลิกขวาเพื่อลบจุดที่ชี้ หรือลบจุดล่าสุด
+  const handleCanvasContextMenu = (e) => {
+    e.preventDefault();
+    const coords = getCanvasCoords(e);
+    const nearIdx = findPointIndexNear(coords);
+    if (nearIdx !== -1) {
+      setDetectedPoints(prev => prev.filter((_, idx) => idx !== nearIdx));
+      showToast(`ลบจุดที่ ${nearIdx + 1} แล้ว`);
+    } else if (detectedPoints.length > 0) {
+      setDetectedPoints(prev => prev.slice(0, -1));
+      showToast('ลบจุดยอดล่าสุดแล้ว');
+    }
+  };
+
+  // ฟังก์ชันตรวจจับเส้นสีแดงอัตโนมัติจากภาพ
+  const handleAutoDetect = (customCanvas = null) => {
+    const canvas = customCanvas || canvasRef.current;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+    setIsDetecting(true);
+
+    try {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const boundary = detectRedBoundary(imgData);
+
+      if (boundary && boundary.length >= 3) {
+        setDetectedPoints(boundary);
+        showToast(`ตรวจจับเส้นแนวเขตที่ดินสำเร็จ (${boundary.length} จุด) คำนวณระยะด้าน 1:1 เรียบร้อย`);
+      } else {
+        showToast('ไม่พบเส้นแนวเขตสีแดงที่ชัดเจน กรุณาคลิกปักหมุดจุดยอดตามมุมแปลงได้เลยครับ');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('ไม่สามารถสแกนภาพได้ กรุณาคลิกปักหมุดจุดยอดตามมุมแปลง');
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  // ย้อนกลับจุดล่าสุด (Undo)
+  const handleUndoPoint = () => {
+    if (detectedPoints.length > 0) {
+      setDetectedPoints(prev => prev.slice(0, -1));
+      showToast('ย้อนกลับจุดยอดล่าสุดแล้ว');
+    }
+  };
+
+  // ล้างจุดทั้งหมด (Clear Points)
+  const handleClearPoints = () => {
+    setDetectedPoints([]);
+    showToast('ล้างจุดยอดแนวเขตออกทั้งหมดแล้ว');
+  };
+
+  // โหลดรูปภาพใหม่และตรวจจับอัตโนมัติ
+  const loadNewImage = (srcUrl, sourceName = 'ภาพใหม่') => {
+    setImageSrc(srcUrl);
+    setDetectedPoints([]); // ล้างจุดชุดเก่าออกทันที 100%!
+    setActiveTab('dxf');
+    showToast(`โหลด${sourceName}เรียบร้อย (ล้างจุดชุดเก่าออกแล้ว)`);
+
+    // รอให้ภาพโหลดเสร็จแล้วลองตรวจจับเส้นสีแดงอัตโนมัติ
+    const tempImg = new Image();
+    tempImg.crossOrigin = 'anonymous';
+    tempImg.onload = () => {
+      const offscreen = document.createElement('canvas');
+      offscreen.width = tempImg.width;
+      offscreen.height = tempImg.height;
+      const ctx = offscreen.getContext('2d');
+      ctx.drawImage(tempImg, 0, 0);
+      try {
+        const imgData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
+        const boundary = detectRedBoundary(imgData);
+        if (boundary && boundary.length >= 3) {
+          setDetectedPoints(boundary);
+          showToast(`ตรวจจับเส้นแนวเขตที่ดินของ${sourceName}สำเร็จ (${boundary.length} จุด) คำนวณระยะด้าน 1:1 เรียบร้อย!`);
+        }
+      } catch {
+        /* fallback to manual click */
+      }
+    };
+    tempImg.src = srcUrl;
+  };
+
+  // ดักจับการกดปุ่ม Ctrl+V (Paste) จากทั่วทั้งหน้าต่าง
+  useEffect(() => {
+    const handleGlobalPaste = (e) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'textarea' || activeTag === 'input') {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              loadNewImage(event.target.result, 'ภาพจากคลิปบอร์ด');
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, []);
+
+  // วางจากคลิปบอร์ด (ปุ่มกด)
   const handlePaste = async () => {
     try {
       const items = await navigator.clipboard.read();
       for (const item of items) {
-        // ถ้ารูปภาพอยู่ในคลิปบอร์ด
         const imageType = item.types.find(t => t.startsWith('image/'));
         if (imageType) {
           const blob = await item.getType(imageType);
           const reader = new FileReader();
           reader.onload = (e) => {
-            setImageSrc(e.target.result);
-            setActiveTab('dxf');
-            showToast('โหลดรูปภาพแปลงที่ดินจากคลิปบอร์ดแล้ว!');
+            loadNewImage(e.target.result, 'ภาพจากคลิปบอร์ด');
           };
           reader.readAsDataURL(blob);
           return;
         }
       }
-      // ถ้าเป็นข้อความ
       const text = await navigator.clipboard.readText();
       if (text) {
         setInputText(text);
@@ -245,8 +420,7 @@ export default function LandConverterView() {
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        setImageSrc(event.target.result);
-        showToast('อัปโหลดรูปภาพสำเร็จ');
+        loadNewImage(event.target.result, 'ภาพอัปโหลด');
       };
       reader.readAsDataURL(file);
     }
@@ -600,19 +774,52 @@ export default function LandConverterView() {
         <div className="space-y-6 animate-in fade-in duration-300">
           {/* Top Control Bar */}
           <div className="glass-card p-4 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-slate-200">
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-gold-600 transition-all flex items-center gap-2 shadow-sm"
+                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white hover:bg-gold-600 transition-all flex items-center gap-1.5 shadow-sm"
               >
-                <ImageIcon size={15} /> เลือกรูปภาพ Screenshot
+                <ImageIcon size={14} /> เลือกรูปภาพ
               </button>
               <button
                 onClick={handlePaste}
                 className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5"
                 title="กด Ctrl+V หรือคลิกเพื่อวางรูปจากคลิปบอร์ด"
               >
-                <Clipboard size={14} /> วางภาพจากคลิปบอร์ด
+                <Clipboard size={14} /> วางภาพ (Ctrl+V)
+              </button>
+              <button
+                onClick={() => handleAutoDetect()}
+                disabled={isDetecting}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-gold-500 to-gold-600 hover:from-gold-600 hover:to-gold-700 text-white shadow-sm transition-all flex items-center gap-1.5"
+                title="สแกนหาเส้นสีแดงของแนวเขตโฉนดที่ดินในรูปภาพอัตโนมัติ"
+              >
+                <Sparkles size={14} className={isDetecting ? 'animate-spin' : ''} />
+                {isDetecting ? 'กำลังตรวจจับ...' : 'ตรวจจับเส้นสีแดงอัตโนมัติ'}
+              </button>
+              <button
+                onClick={handleUndoPoint}
+                disabled={detectedPoints.length === 0}
+                className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center gap-1 ${
+                  detectedPoints.length > 0 
+                    ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100' 
+                    : 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed'
+                }`}
+                title="ย้อนกลับจุดยอดล่าสุด"
+              >
+                <Undo2 size={13} /> ย้อนกลับ
+              </button>
+              <button
+                onClick={handleClearPoints}
+                disabled={detectedPoints.length === 0}
+                className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center gap-1 ${
+                  detectedPoints.length > 0 
+                    ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100' 
+                    : 'bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed'
+                }`}
+                title="ล้างจุดยอดทั้งหมดเพื่อเริ่มปักหมุดใหม่"
+              >
+                <Trash2 size={13} /> ล้างจุด
               </button>
               <button
                 onClick={() => {
@@ -621,9 +828,10 @@ export default function LandConverterView() {
                   setTargetAreaSqm(6519.6);
                   showToast('รีเซ็ตเป็นตัวอย่างโฉนด 17880');
                 }}
-                className="px-3.5 py-2 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+                className="px-3 py-2 text-xs font-medium rounded-xl text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+                title="โหลดรูปภาพและจุดตัวอย่างโฉนด 17880"
               >
-                <RefreshCw size={13} /> รีเซ็ต
+                <RefreshCw size={12} /> รีเซ็ตตัวอย่าง
               </button>
             </div>
 
@@ -641,7 +849,12 @@ export default function LandConverterView() {
 
               <button
                 onClick={handleDownloadDXF}
-                className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95"
+                disabled={detectedPoints.length < 3}
+                className={`px-5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-md active:scale-95 ${
+                  detectedPoints.length >= 3
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
               >
                 <Download size={15} /> ดาวน์โหลดไฟล์ DXF (AutoCAD 1:1)
               </button>
@@ -663,15 +876,17 @@ export default function LandConverterView() {
             <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ความยาวรอบรูป (Perimeter)</span>
               <span className="text-base font-bold text-slate-800 mt-0.5 block">
-                {sidesInfo.totalPerimeter ? `${sidesInfo.totalPerimeter} ม.` : '-'}
+                {sidesInfo.totalPerimeter > 0 ? `${sidesInfo.totalPerimeter} ม.` : '-'}
               </span>
-              <span className="text-[11px] text-slate-400 block">รวม {detectedPoints.length} ด้าน</span>
+              <span className="text-[11px] text-slate-400 block">
+                {detectedPoints.length >= 3 ? `รวม ${detectedPoints.length} ด้าน` : 'รอปักจุดยอด (อย่างน้อย 3 จุด)'}
+              </span>
             </div>
 
             <div className="glass-panel p-3.5 rounded-xl border border-slate-200/60">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">มาตราส่วนสเกล (Scale Factor)</span>
               <span className="text-sm font-semibold font-mono text-slate-800 mt-1 block">
-                1 px ≈ {scaleFactor.toFixed(4)} ม.
+                {pixelArea > 0 ? `1 px ≈ ${scaleFactor.toFixed(4)} ม.` : '-'}
               </span>
               <span className="text-[11px] text-slate-400 block">True 1:1 Cad Scale</span>
             </div>
@@ -691,13 +906,25 @@ export default function LandConverterView() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Canvas (2 Columns) */}
             <div className="lg:col-span-2 glass-card p-4 rounded-2xl border border-slate-200 flex flex-col">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <Eye size={15} className="text-gold-500" />
-                  พรีวิวการตรวจจับเส้นแนวเขตที่ดิน (Cyan Line Overlay)
-                </span>
+              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Eye size={15} className="text-gold-500" />
+                    พรีวิวแนวเขตที่ดิน & ปักหมุดมุมแปลง
+                  </span>
+                  {detectedPoints.length === 0 ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200 flex items-center gap-1">
+                      <Crosshair size={10} /> ล้างชุดเก่าแล้ว — คลิกบนภาพเพื่อปักจุดใหม่
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                      ปักแล้ว {detectedPoints.length} จุด (คลิกลากเพื่อย้าย)
+                    </span>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-3 text-xs">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 select-none">
                     <input
                       type="checkbox"
                       checked={showPoints}
@@ -706,7 +933,7 @@ export default function LandConverterView() {
                     />
                     <span>แสดงจุดยอด</span>
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 select-none">
                     <input
                       type="checkbox"
                       checked={showLengths}
@@ -721,44 +948,100 @@ export default function LandConverterView() {
               <div className="relative w-full overflow-auto bg-slate-950/5 rounded-xl p-2 border border-slate-200 flex items-center justify-center min-h-[420px]">
                 <canvas
                   ref={canvasRef}
-                  className="max-w-full h-auto rounded-lg shadow-sm border border-slate-300"
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onDoubleClick={handleCanvasDoubleClick}
+                  onContextMenu={handleCanvasContextMenu}
+                  style={{
+                    cursor: draggingIdx !== null ? 'grabbing' : (hoveredPointIdx !== null ? 'grab' : 'crosshair')
+                  }}
+                  className="max-w-full h-auto rounded-lg shadow-sm border border-slate-300 select-none"
+                  title="คลิกเพื่อปักจุดยอด | คลิกลากเพื่อย้าย | ดับเบิลคลิกหรือคลิกขวาเพื่อลบจุด"
                 />
               </div>
 
-              <div className="mt-2 text-[11px] text-slate-400 flex justify-between">
-                <span>เส้นประสีฟ้า = แนวเขตโฉนดที่จะถูกแปลงเป็น DXF Polyline</span>
-                <span>จุดสีแดง = Vertex Corners</span>
+              <div className="mt-2 text-[11px] text-slate-500 flex flex-col sm:flex-row justify-between gap-1">
+                <span>💡 <strong>วิธีใช้งาน:</strong> คลิกบนภาพตามมุมเส้นสีแดงเพื่อปักหมุด | คลิกลากเพื่อปรับตำแหน่งมุม | ดับเบิลคลิกหรือคลิกขวาเพื่อลบจุด</span>
+                <span className="text-slate-400">เส้นประสีฟ้า = แนวเขต DXF</span>
               </div>
             </div>
 
             {/* Side Lengths Table (1 Column) */}
             <div className="glass-card p-4 rounded-2xl border border-slate-200 flex flex-col justify-between">
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-                  ระยะความยาวแต่ละด้าน (คำนวณจริง 1:1)
-                </h4>
-                <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-slate-100 text-xs">
-                  {sidesInfo.sides?.map((side, idx) => (
-                    <div key={idx} className="py-2 flex justify-between items-center hover:bg-slate-50 px-2 rounded">
-                      <span className="text-slate-600 font-medium">
-                        ด้านที่ {side.from} → {side.to}
-                      </span>
-                      <span className="font-bold font-mono text-slate-900">
-                        {side.length} เมตร
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    ระยะความยาวแต่ละด้าน (คำนวณจริง 1:1)
+                  </h4>
+                  {detectedPoints.length >= 3 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      ครบ {detectedPoints.length} ด้าน
+                    </span>
+                  )}
                 </div>
+
+                {detectedPoints.length === 0 ? (
+                  <div className="text-center py-10 px-4 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 my-4">
+                    <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-2.5 shadow-inner">
+                      <Crosshair size={20} />
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">ยังไม่ได้ระบุจุดแนวเขตแปลงที่ดิน</p>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      ระบบได้ล้างจุดชุดเก่าออกแล้วสำหรับรูปใหม่นี้<br />
+                      👉 <strong>คลิกบนภาพตามมุมเส้นสีแดง (3 จุดขึ้นไป)</strong> หรือกดปุ่ม <strong>"ตรวจจับเส้นสีแดงอัตโนมัติ"</strong> ด้านบนเพื่อเริ่มคำนวณระยะด้าน 1:1 ทันที
+                    </p>
+                    <button
+                      onClick={() => handleAutoDetect()}
+                      className="mt-3.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-gold-500 hover:bg-gold-600 text-white shadow-sm transition-all inline-flex items-center gap-1.5"
+                    >
+                      <Sparkles size={13} /> ตรวจจับเส้นสีแดงอัตโนมัติ
+                    </button>
+                  </div>
+                ) : detectedPoints.length < 3 ? (
+                  <div className="text-center py-8 px-4 bg-blue-50/60 rounded-xl border border-dashed border-blue-200 my-4">
+                    <p className="text-xs font-bold text-blue-900">กำลังปักหมุด: {detectedPoints.length} จุด</p>
+                    <p className="text-[11px] text-blue-700 mt-1 leading-relaxed">
+                      คลิกบนภาพเพิ่มอีก {3 - detectedPoints.length} จุด เพื่อสร้างรูปปิดของแปลงที่ดิน และแสดงระยะความยาวครบทุกด้าน
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-slate-100 text-xs">
+                    {sidesInfo.sides?.map((side, idx) => (
+                      <div key={idx} className="py-2.5 flex justify-between items-center hover:bg-slate-50 px-2 rounded transition-colors">
+                        <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                            {side.from}
+                          </span>
+                          <span>→</span>
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                            {side.to}
+                          </span>
+                        </span>
+                        <span className="font-bold font-mono text-slate-900 text-sm">
+                          {side.length} เมตร
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="pt-4 border-t border-slate-200 mt-4 space-y-2">
-                <div className="flex justify-between text-xs">
+              <div className="pt-4 border-t border-slate-200 mt-4 space-y-2.5">
+                <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-slate-700">ความยาวรอบรูปทั้งหมด:</span>
-                  <span className="font-bold text-emerald-600 font-mono">{sidesInfo.totalPerimeter} ม.</span>
+                  <span className="font-bold text-emerald-600 font-mono text-sm">
+                    {sidesInfo.totalPerimeter > 0 ? `${sidesInfo.totalPerimeter} ม.` : '-'}
+                  </span>
                 </div>
                 <button
                   onClick={handleDownloadDXF}
-                  className="w-full py-2.5 text-xs font-bold rounded-xl bg-slate-900 hover:bg-gold-600 text-white transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
+                  disabled={detectedPoints.length < 3}
+                  className={`w-full py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md active:scale-95 ${
+                    detectedPoints.length >= 3
+                      ? 'bg-slate-900 hover:bg-gold-600 text-white'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
                 >
                   <Download size={15} /> โหลดไฟล์ AutoCAD DXF (.dxf)
                 </button>

@@ -338,3 +338,126 @@ export function generateDXFString(pts, scaleFactor = 1, options = {}) {
   dxfLines.push('0', 'ENDSEC', '0', 'EOF');
   return dxfLines.join('\n');
 }
+
+/**
+ * คำนวณระยะห่างตั้งฉากจากจุด p ไปยังเส้นตรง ab
+ */
+export function perpendicularDistance(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx === 0 && dy === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  return Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / Math.hypot(dx, dy);
+}
+
+/**
+ * ลดทอนจุดตามแนวเส้นด้วย Douglas-Peucker algorithm
+ */
+export function douglasPeucker(points, epsilon = 2) {
+  if (!points || points.length <= 2) return points || [];
+  let maxDist = 0;
+  let index = 0;
+  const end = points.length - 1;
+  for (let i = 1; i < end; i++) {
+    const d = perpendicularDistance(points[i], points[0], points[end]);
+    if (d > maxDist) {
+      maxDist = d;
+      index = i;
+    }
+  }
+  if (maxDist > epsilon) {
+    const left = douglasPeucker(points.slice(0, index + 1), epsilon);
+    const right = douglasPeucker(points.slice(index), epsilon);
+    return left.slice(0, -1).concat(right);
+  } else {
+    return [points[0], points[end]];
+  }
+}
+
+/**
+ * หาเส้นขอบนูน (Convex Hull) ของชุดจุดพิกเซล
+ */
+export function convexHull(points) {
+  if (!points || points.length <= 2) return points || [];
+  const sorted = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+/**
+ * ตรวจจับแนวเส้นสีแดงของแปลงที่ดินจากภาพ Screenshot ของ LandsMaps
+ */
+export function detectRedBoundary(imageData, options = {}) {
+  if (!imageData || !imageData.data || !imageData.width || !imageData.height) {
+    return [];
+  }
+  const { data, width, height } = imageData;
+  const {
+    epsilonRatio = 0.025,
+    minRedThreshold = 125,
+    redRatio = 1.35
+  } = options;
+
+  const redPoints = [];
+  const padX = Math.floor(width * 0.03);
+  const padY = Math.floor(height * 0.03);
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 350));
+
+  for (let y = padY; y < height - padY; y += step) {
+    for (let x = padX; x < width - padX; x += step) {
+      const idx = (y * width + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+
+      // เกณฑ์สีแดงสดของแนวเขตที่ดินใน LandsMaps
+      if (r > minRedThreshold && r > g * redRatio && r > b * redRatio) {
+        redPoints.push({ x, y });
+      }
+    }
+  }
+
+  if (redPoints.length < 8) return [];
+
+  // หาจุดศูนย์กลางของกลุ่มสีแดง
+  const cx = redPoints.reduce((sum, p) => sum + p.x, 0) / redPoints.length;
+  const cy = redPoints.reduce((sum, p) => sum + p.y, 0) / redPoints.length;
+
+  // กรองจุดที่ไกลเกินไป (ลดผลกระทบจากเส้นแปลงข้างเคียงที่ห่างออกไป)
+  const maxRadius = Math.min(width, height) * 0.48;
+  const filteredPoints = redPoints.filter(p => Math.hypot(p.x - cx, p.y - cy) <= maxRadius);
+  const workingSet = filteredPoints.length >= 8 ? filteredPoints : redPoints;
+
+  const hull = convexHull(workingSet);
+  if (hull.length < 3) return [];
+
+  // ลดทอนจุดเพื่อให้ได้เฉพาะมุมหลักของแปลง
+  const closed = [...hull, hull[0]];
+  const epsilon = Math.max(4, Math.min(width, height) * epsilonRatio);
+  const simplified = douglasPeucker(closed, epsilon);
+
+  if (simplified.length > 1 &&
+      simplified[0].x === simplified[simplified.length - 1].x &&
+      simplified[0].y === simplified[simplified.length - 1].y) {
+    simplified.pop();
+  }
+
+  return simplified;
+}
+
